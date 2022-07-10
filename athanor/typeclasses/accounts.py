@@ -26,7 +26,7 @@ from django.conf import settings
 from evennia import DefaultAccount
 
 
-class Account(DefaultAccount):
+class AthanorAccount(DefaultAccount):
 
     def puppet_object(self, session, obj):
         # safety checks

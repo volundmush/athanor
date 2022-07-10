@@ -6,7 +6,7 @@ from athanor.utils import ev_to_rich
 from athanor.dgscripts.dgscripts import DGHandler
 
 
-class GameObj:
+class AthanorObj:
     # This field should contain string names of properties on this object
     # which provide an .all() method that returns an iterable of Modifiers.
     # Order according to preference.

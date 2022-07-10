@@ -16,10 +16,6 @@ class AthanorSession(ServerSession):
         super().__init__()
         self.play = None
 
-    def at_login(self, account):
-        super().at_login(account)
-        self.add_select()
-
     @lazy_property
     def console(self):
         from mudrich import MudConsole
@@ -112,20 +108,6 @@ class AthanorSession(ServerSession):
 
             play = DefaultPlay.objects.get(id=self.puid)
             self.bind_to_play(play)
-        else:
-            self.add_select()
-
-    def add_select(self):
-        global _Select
-        if not _Select:
-            _Select = class_from_module(settings.CMDSET_SELECT)
-        self.cmdset.add(_Select)
-
-    def remove_select(self):
-        global _Select
-        if not _Select:
-            _Select = class_from_module(settings.CMDSET_SELECT)
-        self.cmdset.remove(_Select)
 
     def get_puppet(self):
         """
@@ -155,7 +137,6 @@ class AthanorSession(ServerSession):
         play.sessions.add(self)
         self.play = play
         self.puid = obj.id
-        self.remove_select()
 
     def create_or_join_play(self, obj):
         if self.play:

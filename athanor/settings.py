@@ -23,7 +23,6 @@ BASE_PLAY_TYPECLASS = "athanor.plays.plays.DefaultPlay"
 BASE_DGSCRIPT_TYPECLASS = "athanor.dgscripts.dgscripts.DefaultDGScript"
 
 CMDSET_PLAY = "athanor.commands.cmdsets.PlayCmdSet"
-CMDSET_SELECT = "athanor.commands.cmdsets.SelectCmdSet"
 
 AT_SERVER_STARTSTOP_MODULE = "athanor.server_hooks"
 

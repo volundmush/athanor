@@ -100,18 +100,6 @@ class SessionCmdSet(default_cmds.SessionCmdSet):
         #
 
 
-class SelectCmdSet(CmdSet):
-    """
-    This Cmdset is made available on Session level once logged in.
-    It is removed once the session puppets a character.
-    """
-
-    key = "AthanorSelect"
-
-    def at_cmdset_creation(self):
-        super().at_cmdset_creation()
-
-
 class PlayCmdSet(CmdSet):
     """
     This Cmdset is always available on a Play tracker once created.
