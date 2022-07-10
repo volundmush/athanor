@@ -9,8 +9,9 @@ class PlayDB(TypedObject):
     db_account = models.ForeignKey("accounts.AccountDB", on_delete=models.CASCADE, related_name="plays", null=False)
     db_sessid = models.JSONField(defauilt=list)
     db_cmdset_storage = models.JSONField(default=list)
+    db_last_good = models.DateTimeField(editable=True, auto_now_add=True)
     db_last_activity = models.DateTimeField(editable=True, auto_now_add=True)
-
+    db_timeout_seconds = models.FloatField(default=0.0)
     __settingsclasspath__ = settings.BASE_PLAY_TYPECLASS
     __defaultclasspath__ = "athanor.plays.plays.DefaultPlay"
     __applabel__ = "game"

@@ -16,12 +16,16 @@ at_server_cold_stop()
 
 """
 
+_ran_start = False
 
-def at_server_start():
-    """
-    This is called every time the server starts up, regardless of
-    how it was shut down.
-    """
+
+def at_always_start():
+    global _ran_start
+    if _ran_start:
+        return
+    else:
+        _ran_start = True
+
     from mudrich import install_mudrich
     install_mudrich()
 
@@ -41,6 +45,17 @@ def at_server_start():
         sys_class = class_from_module(sys_path)
         sys_obj = sys_class()
         SYSTEMS[sys_obj.name] = sys_obj
+
+    for k, v in SYSTEMS.items():
+        v.at_init()
+
+
+def at_server_start():
+    """
+    This is called every time the server starts up, regardless of
+    how it was shut down.
+    """
+    at_always_start()
 
     for k, v in SYSTEMS.items():
         v.at_start()
@@ -68,6 +83,8 @@ def at_server_reload_start():
     """
     This is called only when server starts back up after a reload.
     """
+    at_always_start()
+
     from athanor import SYSTEMS
 
     for k, v in SYSTEMS.items():
@@ -89,6 +106,8 @@ def at_server_cold_start():
     This is called only when the server starts "cold", i.e. after a
     shutdown or a reset.
     """
+    at_always_start()
+
     from athanor import SYSTEMS
 
     for k, v in SYSTEMS.items():

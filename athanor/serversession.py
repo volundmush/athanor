@@ -107,7 +107,7 @@ class AthanorSession(ServerSession):
             # slip in some changes here.
 
             play = DefaultPlay.objects.get(id=self.puid)
-            self.bind_to_play(play)
+            self.bind_play(play)
 
     def get_puppet(self):
         """
@@ -133,10 +133,16 @@ class AthanorSession(ServerSession):
         super().load_sync_data(sessdata)
         self.update_rich()
 
-    def bind_to_play(self, play):
+    def bind_play(self, play):
         play.sessions.add(self)
         self.play = play
         self.puid = obj.id
+
+    def unbind_play(self):
+        play = self.play
+        self.puid = None
+        self.play = None
+        play.sessions.remove(self)
 
     def create_or_join_play(self, obj):
         if self.play:
@@ -150,7 +156,7 @@ class AthanorSession(ServerSession):
             play = obj.play
             if play.account != self.account:
                 raise RuntimeError("Character is in play by another account!")
-            self.bind_to_play(play)
+            self.bind_play(play)
             play.on_additional_session(self)
 
         else:

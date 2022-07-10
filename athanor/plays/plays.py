@@ -1,10 +1,11 @@
 import time
+from django.conf import settings
 from evennia.typeclasses.models import TypeclassBase
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet import reactor, task
 from athanor.plays.models import PlayDB
 from evennia.objects.objects import ObjectSessionHandler, _SESSID_MAX
-from evennia.utils.utils import lazy_property, class_from_module, make_iter, to_str
+from evennia.utils.utils import lazy_property, class_from_module, make_iter, to_str, logger
 
 from evennia.commands.cmdsethandler import CmdSetHandler
 
@@ -140,8 +141,11 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
         Called when the Play object is created. This should prepare the character for play, display updates
         to the player, etc.
         """
+        self.deploy_character()
 
-    def msg(self, **kwargs):
+    def msg(self, text=None, **kwargs):
+        if text:
+            kwargs["text"] = text
         for session in self.sessions.all():
             session.data_out(**kwargs)
 
@@ -174,3 +178,76 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
 
     def on_first_session(self, session):
         pass
+
+    def deploy_character(self):
+        c = self.id
+        if c.location is not None:
+            return
+
+        place_in = None
+
+        if (found := c.db.prelogout_location):
+            place_in = found
+        elif (found := c.home):
+            place_in = home
+        else:
+            place_in = settings.SAFE_FALLBACK
+
+        if not c.move_to(place_in, quiet=True, move_hooks=False):
+            self.msg("Cannot find a safe place to put you. Contact staff!")
+            logger.error(f"Cannot deploy_character() for {c}, No Acceptable locations.")
+            return
+        c.location.at_object_receive(c)
+
+        c.location.msg_contents(text="$You() has entered the game.", exclude=c, from_obj=c)
+
+
+    def possess(self, obj, msg=None):
+        if msg is None:
+            msg = f"You become {obj.get_display_name(looker=self.id)}"
+        self.puppet = obj
+        self.msg(msg)
+        self.puppet.at_possess(self)
+
+    def is_possessing(self):
+        return self.id != self.db_puppet
+
+    def unposess(self):
+        puppet = self.puppet
+        self.msg(text=f"You stop possessing {puppet.get_display_name(looker=self.id)} and return to being {self.id.get_display_name(looker=self.id)}")
+        self.puppet = self.id
+        puppet.at_unpossess(self)
+
+    def cleanup_misc(self):
+        if self.is_possessing():
+            self.unposess()
+
+    def extract_character(self):
+        if self.id.location:
+            location = self.id.location
+            location.msg_contents(text="$You() $conj(leaves) the game.", from_obj=self.id)
+            location.at_object_leave(self.id)
+            self.id.db.prelogout_location = location
+            self.id.location = None
+
+    def terminate_play(self):
+        self.cleanup_misc()
+        self.extract_character()
+        self.update_stats()
+        if (sessions := self.sessions.all()):
+            for sess in sessions:
+                sess.unbind_play()
+
+    def at_server_cold_stop(self):
+        """
+        If this is a cold stop, then all Plays must be force-terminated.
+        """
+        self.terminate_play()
+
+    def at_server_cold_start(self):
+        """
+        There technically should be no Plays in existence on a cold start.
+        But, if the game crashes or so on, they could remain in the database.
+        If so, this method will clean them up.
+        """
+        self.terminate_play()

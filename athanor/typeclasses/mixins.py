@@ -229,3 +229,9 @@ class AthanorObj:
         if hasattr(self, "puppeteer"):
             return self.puppeteer.connection_time
         return None
+
+    def at_possess(self, play):
+        pass
+
+    def at_unpossess(self, play):
+        pass
