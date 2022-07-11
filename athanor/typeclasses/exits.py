@@ -8,6 +8,7 @@ for allowing Characters to traverse the exit to its destination.
 """
 from evennia import DefaultExit
 from .mixins import AthanorObj
+from athanor.typing import ExitDir
 
 class AthanorExit(AthanorObj, DefaultExit):
     """
@@ -34,6 +35,27 @@ class AthanorExit(AthanorObj, DefaultExit):
                                         not be called if the attribute `err_traverse` is
                                         defined, in which case that will simply be echoed.
     """
+    obj_type = "exit"
 
     def get_room_description(self, looker=None, **kwargs):
         return self.get_display_name(looker=looker, **kwargs)
+
+    def get_dir(self) -> ExitDir:
+        if self.db.direction is not None:
+            return ExitDir(self.db.direction)
+        return ExitDir(-1)
+
+    def at_post_traverse(self, traversing_object, source_location, **kwargs):
+        if traversing_object.location and traversing_object.location.obj_type == "room":
+            direction = self.get_dir().reverse().name
+            traversing_object.location.dgscripts.trigger_enter(direction, traversing_object, **kwargs)
+
+            for obj in traversing_object.location.inventory.all():
+                if not obj.obj_type == "character":
+                    continue
+                if not obj.is_npc():
+                    continue
+                if obj.can_detect(traversing_object):
+                    obj.dgscripts.trigger_greet(direction, traveler, **kwargs)
+                obj.dgscripts.trigger_greet_all(direction, traveler, **kwargs)
+

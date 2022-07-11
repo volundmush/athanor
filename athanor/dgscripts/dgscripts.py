@@ -1,19 +1,86 @@
 import typing
 import operator as o
 import re
-from enum import IntEnum
-from athanor import DG_SCRIPTS
+from collections import defaultdict
+from random import randint
+from enum import IntEnum, IntFlag
 from athanor.exceptions import DGScriptError
 from evennia.utils.ansi import strip_ansi
+from evennia.utils.utils import lazy_property
 from evennia.typeclasses.models import TypeclassBase
-from athanor.dgscripts.models import DGScriptDB
+from athanor.dgscripts.models import DGScriptDB, DGInstanceDB
 
 
 class DefaultDGScript(DGScriptDB, metaclass=TypeclassBase):
 
-    @property
+    @lazy_property
     def instances(self) -> set:
-        return DG_SCRIPTS[self.id]
+        return set()
+
+    def at_first_save(self):
+        pass
+
+
+class DGType(IntEnum):
+    MOB = 0
+    ITEM = 1
+    ROOM = 2
+
+
+class MobTriggers(IntFlag):
+    EMPTY = 0
+    GLOBAL = 1 << 0  # Checked even if Zone empty.
+    RANDOM = 1 << 1  # Checked randomly
+    COMMAND = 1 << 2  # character types a command
+    SPEECH = 1 << 3  # character says word/phrase
+    ACT = 1 << 4   # word or phrase received by mob
+    DEATH = 1 << 5  # someone dies in room
+    GREET = 1 << 6  # someone enters room, and mob sees
+    GREET_ALL = 1 << 7  # anything enters room
+    ENTRY = 1 << 8   # when mob moves to a new room
+    RECEIVE = 1 << 9  # mob receives obj via give
+    FIGHT = 1 << 10  # checked each fight pulse
+    HITPRCNT = 1 << 11  # fighting and below hp%
+    BRIBE = 1 << 12   # mob is given money
+    LOAD = 1 << 13  # when mob loads
+    MEMORY = 1 << 14  # mob sees a figure it remembers
+    CAST = 1 << 15  # mob targetted by spell
+    LEAVE = 1 << 16  # someone leaves room, and mob sees
+    DOOR = 1 << 17  # a door in the room is manipulated
+    TIME = 1 << 19  # trigger fires at certain game time
+
+
+class ItemTriggers(IntFlag):
+    EMPTY = 0
+    GLOBAL = 1 << 0  # unused
+    RANDOM = 1 << 1  # checked randomly
+    COMMAND = 1 << 2 # character types a command
+    TIMER = 1 << 5  # object's timer expires
+    GET = 1 << 6  # item is picked up with get
+    DROP = 1 << 7  # character tries to drop object
+    GIVE = 1 << 8  # character tries to give object
+    WEAR = 1 << 9  # character tries to wear object
+    REMOVE = 1 << 11  # character tries to remove object
+    LOAD = 1 << 13  # when object is loaded
+    CAST = 1 << 15  # obj targetted by spell
+    LEAVE = 1 << 16  # someone leaves room, is seen
+    CONSUME = 1 << 18  # when char tries to eat/drink item
+    TIME = 1 << 19  # trigger fires at certain game time
+
+
+class RoomTriggers(IntFlag):
+    EMPTY = 0
+    GLOBAL = 1 << 0  # check even if zone empty
+    RANDOM = 1 << 1  # checked randomly
+    COMMAND = 1 << 2  # character types a command
+    SPEECH = 1 << 3  # a char says word/phrase
+    RESET = 1 << 5  # on zone reset
+    ENTER = 1 << 6  # character enters room
+    DROP = 1 << 7  # something dropped in room
+    CAST = 1 << 15  # spell cast in room
+    LEAVE = 1 << 16  # character leaves the room
+    DOOR = 1 << 17  # door manipulated in room
+    TIME = 1 << 19  # trigger fires at certain game time
 
 
 class DGState(IntEnum):
@@ -91,37 +158,44 @@ def matching_perc(src: str, start: int) -> int:
 
 class DGScriptInstance:
 
-    def __init__(self, handler, proto: DGScript):
+    def __repr__(self):
+        return f"<{self.__class__.__name__} on {repr(self.handler.owner)} ({self.proto.id}): {self.proto.key}>"
+
+    def __init__(self, handler, instance: DGInstanceDB):
         self.handler = handler
-        self.proto = proto
-        self.state = DGState.DORMANT
+        self.instance = instance
+        self.proto = instance.db_script
+        self.state = DGState(instance.db_state)
         self.wait_time = 0.0
         self.curr_line = 0
-        self.lines: list[str] = list(proto.lines)
+        self.context = 0
+        self.lines: list[str] = list(self.proto.lines)
         self.depth: list[tuple[Nest, int]] = list()
         self.loops = 0
         self.total_loops = 0
         self.vars: dict[str, str] = dict()
 
     def reset(self):
-        self.proto = DGScript.objects.get(id=self.proto.id)
         self.lines = list(self.proto.lines)
-        self.state = DGState.DORMANT
+        self.set_state(DGState.DORMANT)
         self.depth.clear()
         self.loops = 0
         self.total_loops = 0
+        self.context = 0
         self.vars.clear()
-        if self in DG_SCRIPTS:
-            DG_SCRIPTS.remove(self)
-
-    def trigger(self, vars):
-        self.reset()
-        self.vars.update(vars)
-        DG_SCRIPTS.add(self)
-        return self.execute()
 
     def script_log(self, msg: str):
         pass
+
+    def set_state(self, state: DGState):
+        self.state = state
+        self.instance.state = int(state)
+
+    def decrement_timer(self, interval: float):
+        self.wait_time -= interval
+        if self.wait_time <= 0.0:
+            self.wait_time = 0.0
+            self.execute()
 
     def execute(self) -> int:
         try:
@@ -130,10 +204,11 @@ class DGScriptInstance:
                     raise DGScriptError(f"script called in invalid state {self.state.name}")
             if not len(self.lines):
                 raise DGScriptError("script has no lines to execute")
-            self.state = DGState.RUNNING
+            self.set_state(DGState.RUNNING)
             return self.execute_block(self.curr_line, len(self.lines))
         except DGScriptError as err:
-            self.state = DGState.ERROR
+            self.set_state(DGState.ERROR)
+
             self.script_log(f"{err} - {self.proto.id} - Line {self.curr_line+1}")
             return 0
 
@@ -145,7 +220,7 @@ class DGScriptInstance:
 
             if self.loops == 50:
                 # this has run long enough, let's pause it.
-                self.state = DGState.WAITING
+                self.set_state(DGState.WAITING)
                 self.wait_time = 1.0
                 self.loops = 0
                 return 0
@@ -538,26 +613,102 @@ class DGScriptInstance:
 
 class DGHandler:
     """
-    Handler that's meant to be attached to an Object.
+    Handler that's meant to be attached to an Athanor Object.
+
+    This one is Abstract, don't use it directly!
     """
     attr_name = "triggers"
 
     def __init__(self, owner):
         self.owner = owner
         self.scripts: dict[int, DGScriptInstance] = dict()
+        self.vars: dict[int, dict[str, str]] = defaultdict(dict)
         self.load()
 
     def load(self):
-        for t in self.owner.attributes.get(self.attr_name, list()):
-            if (dg := DGScript.objects.filter(id=t).first()):
-                self.scripts[t] = DGScriptInstance(self, dg)
-
-    def save(self):
-        self.owner.attributes.add(self.attr_name, list(self.scripts))
+        for i in self.owner.dg_scripts.all():
+            self.scripts[i.script.id] = DGScriptInstance(self, i)
+        if not self.scripts:
+            if self.owner.db.triggers:
+                for i in self.owner.db.triggers:
+                    self.attach(i)
+                del self.owner.db.triggers
 
     def ids(self):
         return self.scripts.keys()
 
     def all(self):
         return self.scripts.values()
+
+    def attach(self, script_id):
+        if (dg := DefaultDGScript.objects.filter(id=script_id).first()):
+            new_dg, created = self.owner.dg_scripts.get_or_create(db_script=dg)
+            if created:
+                new_dg.save()
+            self.scripts[dg.id] = DGScriptInstance(self, new_dg)
+
+    def detach(self, script_id):
+        if (script := self.scripts.pop(script_id, None)):
+            self.owner.dg_scripts.filter(db_script=script.proto).delete()
+
+    def get_ready(self, trig_type):
+        ready = list()
+        for v in self.all():
+            if v.state == DGState.DORMANT and v.proto.db_trigger_type & trig_type:
+                ready.append(v)
+        return ready
+
+    def reset_finished(self):
+        for k, v in self.scripts.items():
+            if v.state > 2:
+                v.reset()
+
+    def trigger_random(self):
+        pass
+
+    def trigger_given(self, giver, getter, **kwargs):
+        pass
+
+    def trigger_gave_item(self, item, getter, **kwargs):
+        pass
+
+    def trigger_gifted_item(self, item, giver, **kwargs):
+        pass
+
+    def trigger_speech(self, speech, speaker, **kwargs):
+        pass
+
+    def trigger_act(self, action, actor, **kwargs):
+        pass
+
+    def trigger_drop(self, item, dropper, **kwargs):
+        pass
+
+    def trigger_enter(self, direction, traveler, **kwargs):
+        pass
+
+    def trigger_greet(self, direction, traveler, **kwargs):
+        pass
+
+    def trigger_greet_all(self, direction, traveler, **kwargs):
+        pass
+
+
+class DGMobHandler(DGHandler):
+    dg_type = DGType.MOB
+
+    def trigger_greet(self, direction, traveler, **kwargs):
+        for v in self.get_ready(MobTriggers.GREET):
+            if randint(1, 100) <= v.proto.db_narg:
+                v.vars["direction"] = direction
+                v.vars["actor"] = traveler
+                v.execute()
+
+
+class DGItemHandler(DGHandler):
+    dg_type = DGType.ITEM
+
+
+class DGRoomHandler(DGHandler):
+    dg_type = DGType.ROOM
 

@@ -1,6 +1,6 @@
 from django.conf import settings
 from rich.color import ColorSystem
-
+from twisted.internet.defer import inlineCallbacks, returnValue
 from evennia.server.serversession import ServerSession
 from athanor.plays.plays import DefaultPlay
 from evennia.utils.utils import make_iter, lazy_property, class_from_module
@@ -11,6 +11,7 @@ _Select = None
 
 
 class AthanorSession(ServerSession):
+    cmd_objects_sort_priority = 0
 
     def __init__(self):
         super().__init__()
@@ -19,24 +20,33 @@ class AthanorSession(ServerSession):
     @lazy_property
     def console(self):
         from mudrich import MudConsole
-        return MudConsole(color_system=self.rich_color_system(), width=self.protocol_flags["SCREENWIDTH"][0],
+        if "SCREENWIDTH" in self.protocol_flags:
+            width = self.protocol_flags["SCREENWIDTH"][0]
+        else:
+            width = 78
+        return MudConsole(color_system=self.rich_color_system(), width=width,
                           file=self, record=True)
 
     def rich_color_system(self):
-        if self.protocol_flags["NOCOLOR"]:
+        if self.protocol_flags.get("NOCOLOR", False):
             return None
-        if self.protocol_flags["XTERM256"]:
+        if self.protocol_flags.get("XTERM256", False):
             return "256"
-        if self.protocol_flags["ANSI"]:
+        if self.protocol_flags.get("ANSI", False):
             return "standard"
+        return None
 
     def update_rich(self):
-        self.console._width = self.protocol_flags["SCREENWIDTH"][0]
-        if self.protocol_flags["NOCOLOR"]:
+        check = self.console
+        if "SCREENWIDTH" in self.protocol_flags:
+            self.console._width = self.protocol_flags["SCREENWIDTH"][0]
+        else:
+            self.console._width = 80
+        if self.protocol_flags.get("NOCOLOR", False):
             self.console._color_system = None
-        elif self.protocol_flags["XTERM256"]:
+        elif self.protocol_flags.get("XTERM256", False):
             self.console._color_system = ColorSystem.EIGHT_BIT
-        elif self.protocol_flags["ANSI"]:
+        elif self.protocol_flags.get("ANSI", False):
             self.console._color_system = ColorSystem.STANDARD
 
     def write(self, b: str):
@@ -68,19 +78,26 @@ class AthanorSession(ServerSession):
         if (t := kwargs.get("text", None)):
             if hasattr(t, "__rich_console__"):
                 kwargs["text"] = self.print(t)
-            if self.puppet:
-                self.prompt.prepare()
         super().data_out(**kwargs)
 
-    @lazy_property
-    def prompt(self):
-        return PromptHandler(self)
-
     def get_cmd_objects(self):
-        cmd_objects = super().get_cmd_objects()
+        cmd_objects = {"session": self}
         if self.play:
-            cmd_objects["play"] = self.play
+            cmd_objects.update(self.play.get_cmd_objects())
+        else:
+            if self.account:
+                cmd_objects["account"] = self.account
         return cmd_objects
+
+    @inlineCallbacks
+    def get_extra_cmdsets(self, caller, current, cmdsets):
+        """
+        Called by the CmdHandler to retrieve extra cmdsets from this object.
+        Evennia doesn't have any by default for Sessions, but you can
+        overload and add some.
+        """
+        out = yield list()
+        return out
 
     def at_sync(self):
         """
@@ -136,7 +153,7 @@ class AthanorSession(ServerSession):
     def bind_play(self, play):
         play.sessions.add(self)
         self.play = play
-        self.puid = obj.id
+        self.puid = play.id.id
 
     def unbind_play(self):
         play = self.play
@@ -151,14 +168,11 @@ class AthanorSession(ServerSession):
             raise RuntimeError("Must be logged in.")
         if not obj:
             raise RuntimeError("Object not found.")
-        if hasattr(obj, "play"):
-            # object is already in play. We can just join it.
-            play = obj.play
+        if (play := obj.get_play()):
             if play.account != self.account:
                 raise RuntimeError("Character is in play by another account!")
             self.bind_play(play)
             play.on_additional_session(self)
-
         else:
             # object is not in play, so we'll start a new play for it.
             global _PlayTC
@@ -168,6 +182,6 @@ class AthanorSession(ServerSession):
             if existing >= settings.PLAYS_PER_ACCOUNT and not self.locks.check_lockstring(self, "perm(Builder)"):
                 raise RuntimeError(f"You have reached the maximum of {settings.PLAYS_PER_ACCOUNT} characters in play.")
             new_play = _PlayTC.create(self.account, obj)
-            self.bind_to_play(new_play)
+            self.bind_play(new_play)
             new_play.on_first_session(self)
             new_play.at_start()

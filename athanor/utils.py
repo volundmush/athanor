@@ -4,6 +4,7 @@ import random
 import string
 import yaml
 import orjson
+from datetime import datetime, timezone
 
 from pathlib import Path
 from evennia.utils.ansi import parse_ansi, ANSIString
@@ -100,3 +101,7 @@ def echo_action(template: str, actors: dict[str, "DefaultObject"], viewers: typi
 
 def iequals(first: str, second: str):
     return str(first).lower() == str(second).lower()
+
+
+def utcnow():
+    return datetime.now(timezone.utc)

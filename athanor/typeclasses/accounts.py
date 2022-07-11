@@ -24,9 +24,27 @@ several more options for customizing the Guest account system.
 from django.conf import settings
 
 from evennia import DefaultAccount
+from twisted.internet.defer import inlineCallbacks, returnValue
 
 
 class AthanorAccount(DefaultAccount):
+    cmd_objects_sort_priority = 50
+
+    def get_cmd_objects(self):
+        """
+        An Account alone has no way to know which Session called a Command or which Puppet it might be associated with.
+        """
+        return {"account": self}
+
+    @inlineCallbacks
+    def get_extra_cmdsets(self, caller, current, cmdsets):
+        """
+        Called by the CmdHandler to retrieve extra cmdsets from this object.
+        Evennia doesn't have any by default for Accounts, but you can
+        overload and add some.
+        """
+        out = yield list()
+        return out
 
     def puppet_object(self, session, obj):
         # safety checks

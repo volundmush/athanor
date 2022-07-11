@@ -7,4 +7,3 @@ PENDING_COMMANDS = set()
 
 SYSTEMS = dict()
 
-DG_SCRIPTS = defaultdict(set)

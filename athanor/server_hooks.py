@@ -38,10 +38,7 @@ def at_always_start():
             MODIFIERS_NAMES[v.category][v.get_name()] = v
             MODIFIERS_ID[v.category][v.modifier_id] = v
 
-    from twisted.internet import task
-    from twisted.internet.defer import Deferred
-
-    for sys_path in settings.SYSTEM_CLASSES:
+    for sys_path in settings.SYSTEMS:
         sys_class = class_from_module(sys_path)
         sys_obj = sys_class()
         SYSTEMS[sys_obj.name] = sys_obj
@@ -57,13 +54,17 @@ def at_server_start():
     """
     at_always_start()
 
+    from athanor import SYSTEMS
+    from twisted.internet import task
+    from twisted.internet.defer import Deferred
+
     for k, v in SYSTEMS.items():
         v.at_start()
 
     for k, v in SYSTEMS.items():
         if v.interval > 0:
-            v.task = task.LoopingCall(lambda: Deferred.fromCoroutine(v.update()))
-            v.task.start(v.interval)
+            v.looper = task.LoopingCall(lambda: Deferred.fromCoroutine(v.update()))
+            v.task = v.looper.start(v.interval)
 
 
 def at_server_stop():

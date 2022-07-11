@@ -2,13 +2,17 @@ from evennia.settings_default import *
 
 INSTALLED_APPS.extend([
     "athanor.plays",
+    "athanor.dgscripts"
 
 ])
 
 
 SYSTEMS = [
     "athanor.systems.CmdQueueSystem",
-    "athanor.systems.PlaySystem"
+    "athanor.systems.PlaySystem",
+    "athanor.systems.DGWaitSystem",
+    "athanor.systems.DGResetSystem",
+    "athanor.systems.DGRandomSystem"
 ]
 
 MODIFIER_PATHS = []
@@ -35,3 +39,5 @@ SAFE_FALLBACK = DEFAULT_HOME
 # Number of seconds a Play session can go without Sessions before it's
 # forcibly terminated.
 PLAY_TIMEOUT_SECONDS = 30.0
+
+INPUT_FUNC_MODULES.insert(1, "athanor.inputfuncs")

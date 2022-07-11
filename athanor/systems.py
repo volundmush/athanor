@@ -1,7 +1,12 @@
 from athanor import PENDING_COMMANDS
+from athanor.dgscripts.models import DGScriptDB, DGInstanceDB
+from evennia.objects.models import ObjectDB
 import asyncio
 from datetime import datetime
 from django.conf import settings
+from athanor.utils import utcnow
+from athanor.dgscripts.dgscripts import DGState
+from django.db.models import F, Q
 
 
 class System:
@@ -9,6 +14,7 @@ class System:
     interval = 0.0
 
     def __init__(self):
+        self.looper = None
         self.task = None
 
     def at_init(self):
@@ -64,7 +70,7 @@ class PlaySystem(System):
 
     async def update(self):
         for play in self.play.objects.all():
-            play.last_good = datetime.utcnow()
+            play.last_good = utcnow()
             if not play.sessions.count():
                 play.timeout_seconds = play.timeout_seconds + self.interval
                 if play.timeout_seconds >= settings.PLAY_TIMEOUT_SECONDS:
@@ -77,3 +83,45 @@ class PlaySystem(System):
     def at_cold_stop(self):
         for play in self.play.objects.all():
             play.at_server_cold_stop()
+
+
+class DGWaitSystem(System):
+    name = "dgwait"
+    interval = 0.5
+
+    async def update(self):
+        obj_ids = set(DGInstanceDB.objects.filter(db_state=int(DGState.WAITING)).values_list("db_holder", flat=True))
+
+        for i in obj_ids:
+            if not (obj := ObjectDB.objects.filter(id=i).first()):
+                continue
+            obj.dgscripts.resume()
+            await asyncio.sleep(0)
+
+
+class DGResetSystem(System):
+    name = "dgreset"
+    interval = 1.0
+
+    async def update(self):
+        obj_ids = set(DGInstanceDB.objects.filter(db_state__gt=2).values_list("db_holder", flat=True))
+
+        for i in obj_ids:
+            if not (obj := ObjectDB.objects.filter(id=i).first()):
+                continue
+            obj.dgscripts.reset_finished()
+            await asyncio.sleep(0)
+
+
+class DGRandomSystem(System):
+    name = "dgrandom"
+    interval = 13.0
+
+    async def update(self):
+        obj_ids = set(DGInstanceDB.objects.filter(Q(db_state=0) & F('db_script_db_trigger_type').bitand(2)).values_list("db_holder", flat=True))
+
+        for i in obj_ids:
+            if not (obj := ObjectDB.objects.filter(id=i).first()):
+                continue
+            obj.dgscripts.trigger_random()
+            await asyncio.sleep(0)

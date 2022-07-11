@@ -67,12 +67,16 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
     cmd_objects_sort_priority = 75
     lockstring = "control:id({account_id}) or perm(Admin);delete:id({account_id}) or perm(Admin)"
 
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {repr(self.id)}>"
+
     @classmethod
     def create(cls, account, character):
         if (found := cls.objects.filter(id=character).first()):
             raise RuntimeError("Cannot create more than one Play per Character!")
         new_play = cls(id=character, db_puppet=character, db_account=account)
         new_play.save()
+        character.account = account
         return new_play
 
     def at_first_save(self):
@@ -143,11 +147,15 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
         """
         self.deploy_character()
 
-    def msg(self, text=None, **kwargs):
+    def msg(self, text=None, session=None, **kwargs):
         if text:
             kwargs["text"] = text
-        for session in self.sessions.all():
+            self.prompt.prepare()
+        if session:
             session.data_out(**kwargs)
+        else:
+            for sess in self.sessions.all():
+                sess.data_out(**kwargs)
 
     @property
     def idle_time(self):
@@ -184,12 +192,10 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
         if c.location is not None:
             return
 
-        place_in = None
-
         if (found := c.db.prelogout_location):
             place_in = found
         elif (found := c.home):
-            place_in = home
+            place_in = found
         else:
             place_in = settings.SAFE_FALLBACK
 
@@ -197,7 +203,7 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
             self.msg("Cannot find a safe place to put you. Contact staff!")
             logger.error(f"Cannot deploy_character() for {c}, No Acceptable locations.")
             return
-        c.location.at_object_receive(c)
+        c.location.at_object_receive(c, None)
 
         c.location.msg_contents(text="$You() has entered the game.", exclude=c, from_obj=c)
 
@@ -226,9 +232,12 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
         if self.id.location:
             location = self.id.location
             location.msg_contents(text="$You() $conj(leaves) the game.", from_obj=self.id)
-            location.at_object_leave(self.id)
+            location.at_object_leave(self.id, None)
             self.id.db.prelogout_location = location
             self.id.location = None
+
+    def update_stats(self):
+        pass
 
     def terminate_play(self):
         self.cleanup_misc()
@@ -237,6 +246,7 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
         if (sessions := self.sessions.all()):
             for sess in sessions:
                 sess.unbind_play()
+        self.delete()
 
     def at_server_cold_stop(self):
         """
@@ -251,3 +261,6 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
         If so, this method will clean them up.
         """
         self.terminate_play()
+
+    def at_cmdset_get(self):
+        pass

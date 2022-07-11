@@ -1,3 +1,8 @@
+import typing
+from athanor import MODIFIERS_ID, MODIFIERS_NAMES
+from athanor.utils import partial_match
+from athanor.exceptions import DatabaseError
+
 
 class Modifier:
     modifier_id = -1

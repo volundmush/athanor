@@ -1,16 +1,90 @@
 import typing
+from django.core.exceptions import ObjectDoesNotExist
 from evennia.utils.utils import lazy_property, make_iter, to_str, logger
 from athanor.commands.queue import CmdQueueHandler
 from athanor.handlers import InventoryHandler, EquipmentHandler, WeightHandler
 from athanor.utils import ev_to_rich
 from athanor.dgscripts.dgscripts import DGHandler
+from twisted.internet.defer import inlineCallbacks, returnValue
 
 
 class AthanorObj:
+    cmd_objects_sort_priority = 100
+
     # This field should contain string names of properties on this object
     # which provide an .all() method that returns an iterable of Modifiers.
     # Order according to preference.
     modifier_attrs = []
+
+    def get_cmd_objects(self):
+        if (puppeteer := self.get_puppeteer()):
+            return puppeteer.get_cmd_objects()
+        return {"puppet": self}
+
+    @inlineCallbacks
+    def get_location_cmdsets(self, caller, current, cmdsets):
+        """
+        Retrieve Cmdsets from nearby Objects.
+        """
+        try:
+            location = self.location
+        except Exception:
+            location = None
+
+        if not location:
+            returnValue(list())
+
+        local_objlist = yield (
+                location.contents_get(exclude=self) + self.contents_get() + [location]
+        )
+        local_objlist = [o for o in local_objlist if not o._is_deleted]
+        for lobj in local_objlist:
+            try:
+                # call hook in case we need to do dynamic changing to cmdset
+                object.__getattribute__(lobj, "at_cmdset_get")(caller=caller)
+            except Exception:
+                logger.log_trace()
+        # the call-type lock is checked here, it makes sure an account
+        # is not seeing e.g. the commands on a fellow account (which is why
+        # the no_superuser_bypass must be True)
+        local_obj_cmdsets = yield list(
+            chain.from_iterable(
+                lobj.cmdset.cmdset_stack
+                for lobj in local_objlist
+                if (
+                        lobj.cmdset.current
+                        and lobj.access(
+                    caller, access_type="call", no_superuser_bypass=True
+                )
+                )
+            )
+        )
+        for cset in local_obj_cmdsets:
+            # This is necessary for object sets, or we won't be able to
+            # separate the command sets from each other in a busy room. We
+            # only keep the setting if duplicates were set to False/True
+            # explicitly.
+            cset.old_duplicates = cset.duplicates
+            cset.duplicates = True if cset.duplicates is None else cset.duplicates
+
+        if current.no_exits:
+            local_obj_cmdsets = [
+                cmdset for cmdset in local_obj_cmdsets if cmdset.key != "ExitCmdSet"
+            ]
+
+        returnValue(local_obj_cmdsets)
+
+    @inlineCallbacks
+    def get_extra_cmdsets(self, caller, current, cmdsets):
+        """
+        Called by the CmdHandler to retrieve extra cmdsets from this object.
+        For DefaultObject, that's cmdsets from nearby Objects.
+        """
+        extra = list()
+        if not current.no_objs:
+            obj_cmdsets = yield self.get_location_cmdsets(caller, current, cmdsets)
+            extra.extend(obj_cmdsets)
+        returnValue(extra)
 
     @lazy_property
     def cmdqueue(self):
@@ -146,6 +220,20 @@ class AthanorObj:
     def at_post_equip(self, user, slot: int, **kwargs):
         pass
 
+    def get_play(self):
+        try:
+            if hasattr(self, "play") and not self.play.db_account:
+                return self.play
+        except ObjectDoesNotExist:
+            return None
+
+    def get_puppeteer(self):
+        try:
+            if hasattr(self, "puppeteer") and self.puppeteer.db_account:
+                return self.puppeteer
+        except ObjectDoesNotExist:
+            return None
+
     def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
         # try send hooks
         if from_obj:
@@ -167,27 +255,77 @@ class AthanorObj:
                 if isinstance(text, tuple):
                     first = text[0]
                     if hasattr(first, "__rich_console__"):
-                        kwargs["text"] = first
+                        text = first
                     elif isinstance(first, str):
-                        kwargs["text"] = first
+                        text = first
                     else:
                         try:
-                            kwargs["text"] = to_str(first)
+                            text = to_str(first)
                         except Exception:
-                            kwargs["text"] = repr(first)
+                            text = repr(first)
                 elif hasattr(text, "__rich_console__"):
-                    kwargs["text"] = text
+                    text = text
                 else:
                     try:
-                        kwargs["text"] = to_str(text)
+                        text = to_str(text)
                     except Exception:
-                        kwargs["text"] = repr(text)
-            else:
-                kwargs["text"] = text
+                        text = repr(text)
 
         # relay to Play object
-        if hasattr(self, "puppeteer"):
-            self.puppeteer.msg(**kwargs)
+        if (puppeteer := self.get_puppeteer()):
+            puppeteer.msg(text=text, session=session, **kwargs)
+
+    def at_msg_type_say(self, text, from_obj, **kwargs):
+        if not self.can_hear(from_obj):
+            return False
+        self.at_hear(t, from_obj, msg_type, **kwargs)
+        return True
+
+    def at_msg_type_whisper(self, text, from_obj, **kwargs):
+        return self.at_msg_type_say(text, from_obj, **kwargs)
+
+    def at_msg_type_pose(self, text, from_obj, **kwargs):
+        if not self.can_see(from_obj):
+            return False
+        self.at_see(t, from_obj, msg_type, **kwargs)
+        return True
+
+    def at_msg_type(self, text, from_obj, msg_type, **kwargs):
+        if (func := getattr(self, f"at_msg_type_{msg_type}", None)):
+            return func(text, from_obj, **kwargs)
+        return True
+
+    def at_msg_receive(self, text=None, from_obj=None, **kwargs):
+        # We only care if there's extra data attached to this text.
+        if not isinstance(text, tuple):
+            return True
+        if not from_obj:
+            return True
+
+        t = text[0]
+        m = text[1]
+
+        if not (msg_type := m.get("type", None)):
+            return True
+
+        return self.at_msg_type(text, from_obj, msg_type, **kwargs)
+
+    def can_hear(self, target):
+        return True
+
+    def can_see(self, target):
+        return True
+
+    def can_detect(self, target):
+        return self.can_see(target) or self.can_hear(target)
+
+    def at_hear(self, text, from_obj, msg_type, **kwargs):
+        first_quote = text.find('"')
+        speech = text[first_quote+1:-1]
+        self.dgscripts.trigger_speech(speech, from_obj, **kwargs)
+
+    def at_see(self, text, from_obj, msg_type, **kwargs):
+        self.dgscripts.trigger_act(text, from_obj, **kwargs)
 
     @lazy_property
     def dgscripts(self):
@@ -195,7 +333,7 @@ class AthanorObj:
 
     @property
     def is_connected(self):
-        return hasattr(self, "play") or hasattr(self, "puppeteer")
+        return (play := self.get_play()) or (puppeteer := self.get_puppeteer())
 
     @property
     def has_account(self):
@@ -203,9 +341,9 @@ class AthanorObj:
 
     @property
     def is_superuser(self):
-        if hasattr(self, "play") and self.play.is_superuser:
+        if (play := self.get_play()) and play.is_superuser:
             return True
-        if hasattr(self, "puppeteer") and self.puppeteer.is_superuser:
+        if (puppeteer := self.get_puppeteer()) and puppeteer.is_superuser:
             return True
         return False
 
@@ -216,18 +354,18 @@ class AthanorObj:
         no sessions are connected it returns nothing.
 
         """
-        if hasattr(self, "play"):
-            return self.play.idle_time
-        if hasattr(self, "puppeteer"):
-            return self.puppeteer.idle_time
+        if (play := self.get_play()):
+            return play.idle_time
+        if (puppeteer := self.get_puppeteer()):
+            return puppeteer.idle_time
         return None
 
     @property
     def connection_time(self):
-        if hasattr(self, "play"):
-            return self.play.connection_time
-        if hasattr(self, "puppeteer"):
-            return self.puppeteer.connection_time
+        if (play := self.get_play()):
+            return play.connection_time
+        if (puppeteer := self.get_puppeteer()):
+            return puppeteer.connection_time
         return None
 
     def at_possess(self, play):
@@ -235,3 +373,8 @@ class AthanorObj:
 
     def at_unpossess(self, play):
         pass
+
+    def at_give(self, giver, getter, **kwargs):
+        self.dgscripts.trigger_given(giver, getter, **kwargs)
+        giver.dgscripts.trigger_gave_item(self, getter, **kwargs)
+        getter.dgscripts.trigger_gifted_item(self, giver, **kwargs)
