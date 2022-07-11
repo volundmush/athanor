@@ -1,4 +1,5 @@
 import typing
+from itertools import chain
 from django.core.exceptions import ObjectDoesNotExist
 from evennia.utils.utils import lazy_property, make_iter, to_str, logger
 from athanor.commands.queue import CmdQueueHandler
@@ -275,24 +276,24 @@ class AthanorObj:
         if (puppeteer := self.get_puppeteer()):
             puppeteer.msg(text=text, session=session, **kwargs)
 
-    def at_msg_type_say(self, text, from_obj, **kwargs):
+    def at_msg_type_say(self, text, from_obj, msg_type, **kwargs):
         if not self.can_hear(from_obj):
             return False
-        self.at_hear(t, from_obj, msg_type, **kwargs)
+        self.at_hear(text, from_obj, msg_type, **kwargs)
         return True
 
-    def at_msg_type_whisper(self, text, from_obj, **kwargs):
+    def at_msg_type_whisper(self, text, from_obj, msg_type, **kwargs):
         return self.at_msg_type_say(text, from_obj, **kwargs)
 
-    def at_msg_type_pose(self, text, from_obj, **kwargs):
+    def at_msg_type_pose(self, text, from_obj, msg_type, **kwargs):
         if not self.can_see(from_obj):
             return False
-        self.at_see(t, from_obj, msg_type, **kwargs)
+        self.at_see(text, from_obj, msg_type, **kwargs)
         return True
 
     def at_msg_type(self, text, from_obj, msg_type, **kwargs):
         if (func := getattr(self, f"at_msg_type_{msg_type}", None)):
-            return func(text, from_obj, **kwargs)
+            return func(text, from_obj, msg_type, **kwargs)
         return True
 
     def at_msg_receive(self, text=None, from_obj=None, **kwargs):

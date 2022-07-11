@@ -47,23 +47,7 @@ class AthanorAccount(DefaultAccount):
         return out
 
     def puppet_object(self, session, obj):
-        # safety checks
-        if not obj:
-            raise RuntimeError("Object not found")
-        if not session:
-            raise RuntimeError("Session not found")
-        if not obj.access(self, "puppet"):
-            # no access
-            session.msg(f"You don't have permission to puppet '{obj.key}'.")
-            return
-        if (found := self.plays.filter(id=obj).first()):
-            # we don't care how many sessions are linked to the same play which already exists.
-            session.create_or_join_play(obj)
-        else:
-            # it doesn't exist, which means we may not have permission to create another.
-            if self.plays.all().count() >= settings.PLAYS_PER_ACCOUNT and not self.locks.check_lockstring(self, "perm(Builder)"):
-                raise RuntimeError(f"You have reached the maximum {settings.PLAYS_PER_ACCOUNT} characters in play.")
-            session.create_or_join_play(obj)
+        session.create_or_join_play(obj)
 
     def get_characters(self):
         return self.db._playable_characters

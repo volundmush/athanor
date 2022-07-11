@@ -1,12 +1,15 @@
 from athanor import PENDING_COMMANDS
 from athanor.dgscripts.models import DGScriptDB, DGInstanceDB
 from evennia.objects.models import ObjectDB
-import asyncio
 from datetime import datetime
 from django.conf import settings
 from athanor.utils import utcnow
 from athanor.dgscripts.dgscripts import DGState
 from django.db.models import F, Q
+from twisted.internet import reactor, task
+
+def sleep_for(delay):
+    return task.deferLater(reactor, delay, lambda: None)
 
 
 class System:
@@ -56,7 +59,7 @@ class CmdQueueSystem(System):
             if obj.cmdqueue.check(self.interval):
                 # put any objects with commands still pending back into the queue.
                 PENDING_COMMANDS.add(obj)
-            await asyncio.sleep(0)
+            await sleep(0)
 
 
 class PlaySystem(System):
@@ -96,7 +99,7 @@ class DGWaitSystem(System):
             if not (obj := ObjectDB.objects.filter(id=i).first()):
                 continue
             obj.dgscripts.resume()
-            await asyncio.sleep(0)
+            await sleep_for(0)
 
 
 class DGResetSystem(System):
@@ -110,7 +113,7 @@ class DGResetSystem(System):
             if not (obj := ObjectDB.objects.filter(id=i).first()):
                 continue
             obj.dgscripts.reset_finished()
-            await asyncio.sleep(0)
+            await sleep_for(0)
 
 
 class DGRandomSystem(System):
@@ -124,4 +127,4 @@ class DGRandomSystem(System):
             if not (obj := ObjectDB.objects.filter(id=i).first()):
                 continue
             obj.dgscripts.trigger_random()
-            await asyncio.sleep(0)
+            await sleep_for(0)
