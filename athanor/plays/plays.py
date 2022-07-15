@@ -181,6 +181,20 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
             return time.time() - float(min(conn))
         return None
 
+    def add_session(self, session):
+        session.puid = self.id.id
+        session.play = self
+        self.sessions.add(session)
+        session.puppet = self.puppet
+        self.puppet.sessions.add(session)
+
+    def remove_session(self, session):
+        session.puid = None
+        session.puppet = None
+        session.play = None
+        self.puppet.sessions.remove(session)
+        self.sessions.remove(session)
+
     def on_additional_session(self, session):
         pass
 
@@ -245,7 +259,7 @@ class DefaultPlay(PlayDB, metaclass=TypeclassBase):
         self.update_stats()
         if (sessions := self.sessions.all()):
             for sess in sessions:
-                sess.unbind_play()
+                self.remove_session(sess)
         self.delete()
 
     def at_server_cold_stop(self):

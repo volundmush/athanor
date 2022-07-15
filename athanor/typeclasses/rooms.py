@@ -3,6 +3,7 @@ from .mixins import AthanorObj
 from athanor.dgscripts.dgscripts import DGRoomHandler
 from evennia.utils.utils import lazy_property
 
+
 class AthanorRoom(AthanorObj, DefaultRoom):
     obj_type = "room"
 

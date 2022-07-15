@@ -23,4 +23,3 @@ class AthanorItem(AthanorObj, DefaultObject):
                 dropper.msg(f"You cannot drop {self.get_display_name(dropper)} here!")
                 return False
         return True
-

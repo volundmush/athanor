@@ -3,10 +3,12 @@ from itertools import chain
 from django.core.exceptions import ObjectDoesNotExist
 from evennia.utils.utils import lazy_property, make_iter, to_str, logger
 from athanor.commands.queue import CmdQueueHandler
-from athanor.handlers import InventoryHandler, EquipmentHandler, WeightHandler
+from athanor.handlers import InventoryHandler, EquipmentHandler, WeightHandler, PeopleHandler, HangarHandler
 from athanor.utils import ev_to_rich
-from athanor.dgscripts.dgscripts import DGHandler
+from evennia.utils.ansi import strip_ansi
+from athanor.dgscripts.dgscripts import DGHandler, DGCommand, MobTriggers
 from twisted.internet.defer import inlineCallbacks, returnValue
+from evennia import CmdSet
 
 
 class AthanorObj:
@@ -21,6 +23,17 @@ class AthanorObj:
         if (puppeteer := self.get_puppeteer()):
             return puppeteer.get_cmd_objects()
         return {"puppet": self}
+
+    def generate_dg_commands(self):
+        dg_cmdset = CmdSet()
+        dg_cmdset.key = "DGCmdSet"
+        dg_cmdset.duplicates = False
+        dg_cmdset.old_duplicates = False
+        for k, v in self.dgscripts.scripts.items():
+            if v.proto.db_trigger_type & MobTriggers.COMMAND:
+                dg_cmdset.add(DGCommand(key=v.proto.arglist, script_id=k, obj=self))
+        return dg_cmdset
+
 
     @inlineCallbacks
     def get_location_cmdsets(self, caller, current, cmdsets):
@@ -52,12 +65,7 @@ class AthanorObj:
             chain.from_iterable(
                 lobj.cmdset.cmdset_stack
                 for lobj in local_objlist
-                if (
-                        lobj.cmdset.current
-                        and lobj.access(
-                    caller, access_type="call", no_superuser_bypass=True
-                )
-                )
+                if (lobj.cmdset.current and lobj.access(caller, access_type="call", no_superuser_bypass=True))
             )
         )
         for cset in local_obj_cmdsets:
@@ -73,7 +81,7 @@ class AthanorObj:
                 cmdset for cmdset in local_obj_cmdsets if cmdset.key != "ExitCmdSet"
             ]
 
-        returnValue(local_obj_cmdsets)
+        returnValue((local_obj_cmdsets, local_objlist))
 
     @inlineCallbacks
     def get_extra_cmdsets(self, caller, current, cmdsets):
@@ -83,8 +91,9 @@ class AthanorObj:
         """
         extra = list()
         if not current.no_objs:
-            obj_cmdsets = yield self.get_location_cmdsets(caller, current, cmdsets)
+            obj_cmdsets, local_objlist = yield self.get_location_cmdsets(caller, current, cmdsets)
             extra.extend(obj_cmdsets)
+            extra.extend([obj.generate_dg_commands() for obj in local_objlist])
         returnValue(extra)
 
     @lazy_property
@@ -108,6 +117,14 @@ class AthanorObj:
         return InventoryHandler(self)
 
     @lazy_property
+    def people(self):
+        return PeopleHandler(self)
+
+    @lazy_property
+    def vehicles(self):
+        return HangarHandler(self)
+
+    @lazy_property
     def equipment(self):
         return EquipmentHandler(self)
 
@@ -122,13 +139,25 @@ class AthanorObj:
         return self.max_carry_weight(exist_value=exist_value) - self.weight.burden()
 
     def at_object_leave(self, moved_obj, target_location, **kwargs):
-        if moved_obj.db.equipped:
-            self.equipment.remove(moved_obj.db.equipped)
-        else:
-            self.inventory.remove(moved_obj)
+        match moved_obj.obj_type:
+            case "character":
+                self.people.remove(moved_obj)
+            case "vehicle":
+                self.vehicles.remove(moved_obj)
+            case "item":
+                if moved_obj.db.equipped:
+                    self.equipment.remove(moved_obj.db.equipped[1])
+                else:
+                    self.inventory.remove(moved_obj)
 
     def at_object_receive(self, moved_obj, source_location, **kwargs):
-        self.inventory.add(moved_obj)
+        match moved_obj.obj_type:
+            case "character":
+                self.people.add(moved_obj)
+            case "item":
+                self.inventory.add(moved_obj)
+            case "vehicle":
+                self.vehicles.add(moved_obj)
 
     def can_carry_anything(self):
         return self.locks.check_lockstring(self, "perm(Builder)")
@@ -276,24 +305,24 @@ class AthanorObj:
         if (puppeteer := self.get_puppeteer()):
             puppeteer.msg(text=text, session=session, **kwargs)
 
-    def at_msg_type_say(self, text, from_obj, msg_type, **kwargs):
+    def at_msg_type_say(self, text, from_obj, msg_type, extra, **kwargs):
         if not self.can_hear(from_obj):
             return False
-        self.at_hear(text, from_obj, msg_type, **kwargs)
+        self.at_hear(text, from_obj, msg_type, extra, **kwargs)
         return True
 
-    def at_msg_type_whisper(self, text, from_obj, msg_type, **kwargs):
-        return self.at_msg_type_say(text, from_obj, **kwargs)
+    def at_msg_type_whisper(self, text, from_obj, msg_type, extra, **kwargs):
+        return self.at_msg_type_say(text, from_obj, extra, **kwargs)
 
-    def at_msg_type_pose(self, text, from_obj, msg_type, **kwargs):
+    def at_msg_type_pose(self, text, from_obj, msg_type, extra, **kwargs):
         if not self.can_see(from_obj):
             return False
-        self.at_see(text, from_obj, msg_type, **kwargs)
+        self.at_see(text, from_obj, msg_type, extra, **kwargs)
         return True
 
-    def at_msg_type(self, text, from_obj, msg_type, **kwargs):
+    def at_msg_type(self, text, from_obj, msg_type, extra, **kwargs):
         if (func := getattr(self, f"at_msg_type_{msg_type}", None)):
-            return func(text, from_obj, msg_type, **kwargs)
+            return func(text, from_obj, msg_type, extra, **kwargs)
         return True
 
     def at_msg_receive(self, text=None, from_obj=None, **kwargs):
@@ -309,7 +338,7 @@ class AthanorObj:
         if not (msg_type := m.get("type", None)):
             return True
 
-        return self.at_msg_type(text, from_obj, msg_type, **kwargs)
+        return self.at_msg_type(text[0], from_obj, msg_type, text[1], **kwargs)
 
     def can_hear(self, target):
         return True
@@ -320,13 +349,14 @@ class AthanorObj:
     def can_detect(self, target):
         return self.can_see(target) or self.can_hear(target)
 
-    def at_hear(self, text, from_obj, msg_type, **kwargs):
+    def at_hear(self, text, from_obj, msg_type, extra, **kwargs):
+        text = strip_ansi(text)
         first_quote = text.find('"')
         speech = text[first_quote+1:-1]
         self.dgscripts.trigger_speech(speech, from_obj, **kwargs)
 
-    def at_see(self, text, from_obj, msg_type, **kwargs):
-        self.dgscripts.trigger_act(text, from_obj, **kwargs)
+    def at_see(self, text, from_obj, msg_type, extra, **kwargs):
+        self.dgscripts.trigger_act(strip_ansi(text), from_obj, **kwargs)
 
     @lazy_property
     def dgscripts(self):

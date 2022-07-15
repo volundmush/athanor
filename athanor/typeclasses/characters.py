@@ -3,6 +3,7 @@ from .mixins import AthanorObj
 from athanor.dgscripts.dgscripts import DGMobHandler
 from evennia.utils.utils import lazy_property
 
+
 class AthanorCharacter(AthanorObj, DefaultCharacter):
     obj_type = "character"
 

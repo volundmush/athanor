@@ -7,3 +7,8 @@ PENDING_COMMANDS = set()
 
 SYSTEMS = dict()
 
+DG_FUNCTIONS = defaultdict(dict)
+
+DG_INSTANCE_CLASSES = dict()
+
+DG_VARS = dict()

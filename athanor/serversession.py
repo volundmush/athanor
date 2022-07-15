@@ -1,7 +1,7 @@
 from django.conf import settings
 from rich.color import ColorSystem
 from twisted.internet.defer import inlineCallbacks, returnValue
-from evennia.server.serversession import ServerSession
+from evennia.server.serversession import ServerSession, _BASE_SESSION_CLASS
 from athanor.plays.plays import DefaultPlay
 from evennia.utils.utils import make_iter, lazy_property, class_from_module
 
@@ -107,7 +107,7 @@ class AthanorSession(ServerSession):
         if not _ObjectDB:
             from evennia.objects.models import ObjectDB as _ObjectDB
 
-        super().at_sync()
+        _BASE_SESSION_CLASS.at_sync(self)
         if not self.logged_in:
             # assign the unloggedin-command set.
             self.cmdset_storage = settings.CMDSET_UNLOGGEDIN
@@ -124,7 +124,7 @@ class AthanorSession(ServerSession):
             # slip in some changes here.
 
             play = DefaultPlay.objects.get(id=self.puid)
-            self.bind_play(play)
+            play.add_session(self)
 
     def get_puppet(self):
         """
@@ -150,17 +150,6 @@ class AthanorSession(ServerSession):
         super().load_sync_data(sessdata)
         self.update_rich()
 
-    def bind_play(self, play):
-        play.sessions.add(self)
-        self.play = play
-        self.puid = play.id.id
-
-    def unbind_play(self):
-        play = self.play
-        self.puid = None
-        self.play = None
-        play.sessions.remove(self)
-
     def create_or_join_play(self, obj):
         if self.play:
             raise RuntimeError("This session is already controlling a character!")
@@ -171,7 +160,7 @@ class AthanorSession(ServerSession):
         if (play := obj.get_play()):
             if play.account != self.account:
                 raise RuntimeError("Character is in play by another account!")
-            self.bind_play(play)
+            play.add_session(self)
             play.on_additional_session(self)
         else:
             # object is not in play, so we'll start a new play for it.
@@ -182,6 +171,6 @@ class AthanorSession(ServerSession):
             if existing >= settings.PLAYS_PER_ACCOUNT and not self.locks.check_lockstring(self, "perm(Builder)"):
                 raise RuntimeError(f"You have reached the maximum of {settings.PLAYS_PER_ACCOUNT} characters in play.")
             new_play = _PlayTC.create(self.account, obj)
-            self.bind_play(new_play)
+            new_play.add_session(self)
             new_play.on_first_session(self)
             new_play.at_start()

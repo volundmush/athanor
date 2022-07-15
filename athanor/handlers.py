@@ -28,6 +28,14 @@ class InventoryHandler:
         return contents
 
 
+class PeopleHandler(InventoryHandler):
+    attr_name = "people"
+
+
+class HangarHandler(InventoryHandler):
+    attr_name = "vehicles"
+
+
 class EquipmentHandler:
     attr_name = "equipment"
     reverse_name = "equipped"
@@ -76,6 +84,9 @@ class WeightHandler:
     def set(self, value: float):
         self.data = value
         self.save()
+
+    def mod(self, value: float):
+        self.set(self.data + value)
 
     def get_bonuses(self) -> (int, float):
         bonus = 0

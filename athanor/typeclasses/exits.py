@@ -56,6 +56,6 @@ class AthanorExit(AthanorObj, DefaultExit):
                 if not obj.is_npc():
                     continue
                 if obj.can_detect(traversing_object):
-                    obj.dgscripts.trigger_greet(direction, traveler, **kwargs)
-                obj.dgscripts.trigger_greet_all(direction, traveler, **kwargs)
+                    obj.dgscripts.trigger_greet(direction, traversing_object, **kwargs)
+                obj.dgscripts.trigger_greet_all(direction, traversing_object, **kwargs)
 

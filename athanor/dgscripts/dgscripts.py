@@ -1,14 +1,18 @@
 import typing
 import operator as o
 import re
+from django.conf import settings
 from collections import defaultdict
 from random import randint
 from enum import IntEnum, IntFlag
 from athanor.exceptions import DGScriptError
 from evennia.utils.ansi import strip_ansi
-from evennia.utils.utils import lazy_property
+from evennia.utils.utils import lazy_property, class_from_module, logger
 from evennia.typeclasses.models import TypeclassBase
+from evennia import ObjectDB
 from athanor.dgscripts.models import DGScriptDB, DGInstanceDB
+from athanor import DG_INSTANCE_CLASSES, DG_FUNCTIONS, DG_VARS
+from athanor.commands.base import Command
 
 
 class DefaultDGScript(DGScriptDB, metaclass=TypeclassBase):
@@ -22,7 +26,7 @@ class DefaultDGScript(DGScriptDB, metaclass=TypeclassBase):
 
 
 class DGType(IntEnum):
-    MOB = 0
+    CHARACTER = 0
     ITEM = 1
     ROOM = 2
 
@@ -156,10 +160,13 @@ def matching_perc(src: str, start: int) -> int:
         return -1
 
 
+
+
+
 class DGScriptInstance:
 
     def __repr__(self):
-        return f"<{self.__class__.__name__} on {repr(self.handler.owner)} ({self.proto.id}): {self.proto.key}>"
+        return f"<{self.state.name} {self.__class__.__name__} on {repr(self.handler.owner)} ({self.proto.id}): {self.proto.key}>"
 
     def __init__(self, handler, instance: DGInstanceDB):
         self.handler = handler
@@ -176,6 +183,7 @@ class DGScriptInstance:
         self.vars: dict[str, str] = dict()
 
     def reset(self):
+        self.curr_line = 0
         self.lines = list(self.proto.lines)
         self.set_state(DGState.DORMANT)
         self.depth.clear()
@@ -185,11 +193,12 @@ class DGScriptInstance:
         self.vars.clear()
 
     def script_log(self, msg: str):
-        pass
+        print(f"SCRIPT ERROR: {msg}")
 
     def set_state(self, state: DGState):
         self.state = state
         self.instance.state = int(state)
+        print(f"{self} STATE: {self.state.name}")
 
     def decrement_timer(self, interval: float):
         self.wait_time -= interval
@@ -198,6 +207,7 @@ class DGScriptInstance:
             self.execute()
 
     def execute(self) -> int:
+        print(f"EXECUTE: {self}")
         try:
             match self.state:
                 case DGState.RUNNING | DGState.ERROR | DGState.DONE | DGState.PURGED:
@@ -205,25 +215,31 @@ class DGScriptInstance:
             if not len(self.lines):
                 raise DGScriptError("script has no lines to execute")
             self.set_state(DGState.RUNNING)
-            return self.execute_block(self.curr_line, len(self.lines))
+            results = self.execute_block(self.curr_line, len(self.lines))
+            if self.state == DGState.DONE:
+                self.reset()
+            return results
         except DGScriptError as err:
             self.set_state(DGState.ERROR)
-
             self.script_log(f"{err} - {self.proto.id} - Line {self.curr_line+1}")
             return 0
 
     def execute_block(self, start: int, end: int) -> int:
 
+        ret_val = 1
+
         self.curr_line = start
 
         while self.curr_line < end:
+            print(f"CURR_LINE: {self.curr_line} against {end}")
 
-            if self.loops == 50:
+            if self.loops == 500:
+                print(f"{self} RAN TOO LONG!")
                 # this has run long enough, let's pause it.
                 self.set_state(DGState.WAITING)
                 self.wait_time = 1.0
                 self.loops = 0
-                return 0
+                return ret_val
 
             self.loops += 1
             self.total_loops += 1
@@ -233,35 +249,38 @@ class DGScriptInstance:
 
             line = self.get_line(self.curr_line)
             if not line or line.startswith("*"):
-                self.curr_line += 1
-                continue
+                print(f"GOT COMMENT... skipping...")
 
             # cover if
             elif line.startswith("if "):
                 self.depth.append((Nest.IF, self.curr_line))
+                print(f"CHECKING IF: {line}")
                 if not self.process_if(line[3:]):
+                    print(f"IF {line} failed, checking for else/end...")
                     self.curr_line = self.find_else_end()
+                    print(f"IF Failed, proceeding at {self.curr_line}")
                     continue
             elif line.startswith("elseif "):
                 if not self.depth or self.depth[-1][0] != Nest.IF:
                     raise DGScriptError("'elseif' outside of an if block")
-                if not self.process_if(line[7:]):
-                    self.curr_line = self.find_else_end()
-                    continue
+                self.curr_line = self.find_end()
+                continue
             elif line == "else" or line.startswith("else "):
                 if not self.depth or self.depth[-1][0] != Nest.IF:
                     raise DGScriptError("'else' outside of an if block")
+                self.curr_line = self.find_end()
                 continue
             elif line == "end" or line.startswith("end "):
                 if not self.depth or self.depth[-1][0] != Nest.IF:
                     raise DGScriptError("'end' outside of an if block")
                 self.depth.pop()
-                continue
+                print(f"END OF IF {self.curr_line}")
 
             # cover while
             elif line.startswith("while "):
                 self.depth.append((Nest.WHILE, self.curr_line))
                 if not self.process_if(line[6:]):
+                    print(f"WHILE {line} IS TRUE")
                     self.curr_line = self.find_done()
                     continue
 
@@ -287,55 +306,81 @@ class DGScriptInstance:
                 if not self.depth:
                     raise DGScriptError("'done' outside of a switch-case or while block")
                 match self.depth[-1][0]:
-                    case Nest.SWITCH:
-                        # Rewind back to the while clause.
-                        self.curr_line = self.depth[-1][1]
-                        continue
                     case Nest.WHILE:
-                        pass
+                        # Rewind back to the while clause.
+                        print(f"REACHED WHILE END {self.curr_line}")
+                        self.curr_line = self.depth[-1][1]
+                        self.depth.pop()
+                        continue
+                    case Nest.SWITCH:
+                        print(f"REACHED SWITCH END {self.curr_line}")
+                        self.depth.pop()
                     case _:
                         raise DGScriptError("'done' outside of a switch-case or while block")
 
-            else:
 
+            else:
+                print(f"Checking Line... {line}")
                 sub_cmd = self.var_subst(line)
+                print(f"post var_subst: {sub_cmd}")
                 cmd_split = sub_cmd.split(" ", 1)
                 cmd = cmd_split[0]
 
-                match cmd:
+                match cmd.lower():
                     case "nop":
                         # Do nothing.
                         pass
                     case "return":
-                        pass
+                        if len(cmd_split) > 1:
+                            out = cmd_split[1]
+                            self.set_state(DgState.DONE)
+                            if out not in ("0", "1"):
+                                return int(self.truthy(out))
+                            else:
+                                return int(out)
+                        else:
+                            return ret_val
                     case "wait":
-                        pass
+                        if (wait_time := self.cmd_wait(sub_cmd)):
+                            self.set_state(DGState.WAITING)
+                            self.wait_time = wait_time
+                            self.loops = 0
+                            self.curr_line += 1
+                            return ret_val
                     case _:
                         if (func := getattr(self, f"cmd_{cmd}", None)):
-                            func(*cmd_split)
+                            func(sub_cmd)
                         else:
+                            print(f"Unrecognized command {cmd}, passing to execute_cmd...")
                             self.handler.owner.execute_cmd(sub_cmd)
 
+            print(f"Incrementing line...")
             self.curr_line += 1
 
+        self.set_state(DGState.DONE)
 
     def truthy(self, value: str) -> bool:
         if not value:
+            print(f"TRUTHY OF {value}: False")
             return False
-        return value != "0"
+        res = value != "0"
+        print(f"TRUTHY of {value}: {res}")
+        return res
 
     def process_if(self, cond: str) -> bool:
-        return self.truthy(self.eval_expr(cond).strip())
+        result = self.truthy(self.maybe_negate(self.eval_expr(cond).strip()))
+        print(f"IF {cond} : {result}")
+        return result
 
     def eval_expr(self, line: str) -> str:
-        trimmed = strip_ansi(line.strip())
-
-        if (result := self.eval_lhs_op_rhs(trimmed)):
-            return result
-        elif trimmed.startswith("("):
+        print(f"EVAL_EXPR: {line}")
+        trimmed = line.strip()
+        if trimmed.startswith("("):
             m = matching_paren(trimmed, 0)
-            if m != 1:
-                return self.eval_expr(trimmed[1:m-1])
+            if m != -1:
+                return self.eval_expr(trimmed[1:m])
+        elif (result := self.eval_lhs_op_rhs(trimmed)):
+            return result
         else:
             return self.var_subst(trimmed)
 
@@ -353,38 +398,58 @@ class DGScriptInstance:
         "+": o.add,
         "/": o.floordiv,
         "*": o.mul,
-        "!": o.not_
+        #"!": o.not_
     }
 
     def eval_lhs_op_rhs(self, expr: str) -> typing.Optional[str]:
-
+        print(f"EVAL_LHS_OP_RHS: {expr}")
         for op in self.ops_map.keys():
             try:
                 lhs, rhs = expr.split(op, 1)
+                lhs = lhs.strip()
+                rhs = rhs.strip()
+                print(f"LHS: {lhs}, RHS: {rhs}")
                 lhr = self.eval_expr(lhs)
                 rhr = self.eval_expr(rhs)
-                return self.eval_op(op, lhr, rhr)
+                print(f"LHR: {lhr}, RHR: {rhr}")
+                result = self.eval_op(op, lhr, rhr)
+                print(f"EVAL OP RESULT: {result}")
+                return result
             except ValueError:
                 continue
 
+    def maybe_negate(self, data: str):
+        if data.startswith("!"):
+            return "0" if self.truthy(self.maybe_negate(data[1:])) else "1"
+        return data
+
     def eval_op(self, op: str, lhs: str, rhs: str) -> str:
         op_found = self.ops_map[op]
+        print(f"EVAL OP: {op} - {op_found}")
+        result = "0"
+
+        lhs = self.maybe_negate(lhs)
+        rhs = self.maybe_negate(rhs)
+
         if lhs.isnumeric() and rhs.isnumeric():
             a = int(lhs)
             b = int(rhs)
-            return str(op_found(a, b))
+            if op_found(a, b):
+                result = "1"
         else:
             match op:
                 case "&&":
-                    return str(int(self.truthy(lhs) and self.truthy(rhs)))
+                    if self.truthy(lhs) and self.truthy(rhs):
+                        result = "1"
                 case "==" | "!=":
-                    return str(int(op_found(lhs, rhs)))
+                    if op_found(lhs.lower(), rhs.lower()):
+                        result = "1"
                 case "||":
-                    return str(int(self.truthy(lhs) or self.truthy(rhs)))
+                    if  self.truthy(lhs) or self.truthy(rhs):
+                        result = "1"
                 case _:
-                    return "0"
-
-
+                    result = "0"
+        return result
 
     def find_replacement(self, v: str) -> str:
         pass
@@ -393,42 +458,55 @@ class DGScriptInstance:
         pass
 
     def get_line(self, i: int) -> str:
-        return self.lines[i].lower().trim()
+        line = self.lines[i].strip()
+        print(f"GET_LINE: {line}")
+        return line
 
     def find_else_end(self, match_elseif: bool = True, match_else: bool = True) -> int:
         if not self.depth or self.depth[-1][0] != Nest.IF:
+            print(f"FIND ELSE END WHOOPS 1")
             raise DGScriptError("find_end called outside of if! alert a codewiz!")
 
-        i = self.depth[-1][1]
+        i = self.depth[-1][1] + 1
         total = len(self.lines)
         while i < total:
             line = self.get_line(i)
+            print(f"Scanning for Else {match_else}, Elseif {match_elseif}, line {i} : {line}")
             if not line or line.startswith("*"):
                 pass
 
-            elif match_elseif and line.startswith("elseif "):
-                return i
+            elif match_elseif and line.startswith("elseif ") and self.process_if(line[7:]):
+                print(f"found truthy elseif {i}")
+                return i + 1
 
-            elif match_else and (line.startswith("else ") or line.startswith("else")):
-                return i
+            elif match_else and (line.startswith("else ") or line == "else"):
+                print(f"found else {i}")
+                return i + 1
 
-            elif line.startswith("end"):
+            elif line.startswith("end ") or line == "end":
+                print(f"found end {i}")
                 return i
 
             elif line.startswith("if "):
+                depth = len(self.depth)
+                print(f"Nested IF detected at {i}. Depth: {depth}")
                 self.depth.append((Nest.IF, i))
-                i = self.find_done()
+                i = self.find_end() + 1
+                print(f"exited depth {depth} IF...")
                 self.depth.pop()
+                continue
 
             elif line.startswith("switch "):
                 self.depth.append((Nest.SWITCH, i))
-                i = self.find_done()
+                i = self.find_done() + 1
                 self.depth.pop()
+                continue
 
             elif line.startswith("while "):
                 self.depth.append((Nest.WHILE, i))
-                i = self.find_done()
+                i = self.find_done() + 1
                 self.depth.pop()
+                continue
 
             elif line == "default" or line.startswith("default "):
                 raise DGScriptError("'default' outside of a switch-case block")
@@ -439,6 +517,7 @@ class DGScriptInstance:
             elif line == "case" or line.startswith("case "):
                 raise DGScriptError("'case' outside of a switch-case block")
 
+            print(f"incrementing {i}")
             i += 1
 
         raise DGScriptError("'if' without corresponding end")
@@ -453,7 +532,7 @@ class DGScriptInstance:
 
         inside = self.depth[-1][0].name.capitalize()
 
-        i = self.depth[-1][1]
+        i = self.depth[-1][1] + 1
         total = len(self.lines)
         while i < total:
             line = self.get_line(i)
@@ -462,18 +541,21 @@ class DGScriptInstance:
 
             elif line.startswith("if "):
                 self.depth.append((Nest.IF, i))
-                i = self.find_done()
+                i = self.find_end() + 1
                 self.depth.pop()
+                continue
 
             elif line.startswith("switch "):
                 self.depth.append((Nest.SWITCH, i))
-                i = self.find_done()
+                i = self.find_done() + 1
                 self.depth.pop()
+                continue
 
             elif line.startswith("while "):
                 self.depth.append((Nest.WHILE, i))
-                i = self.find_done()
+                i = self.find_done() + 1
                 self.depth.pop()
+                continue
 
             elif line.startswith("elseif "):
                 raise DGScriptError("'elseif' outside of an if block")
@@ -499,7 +581,7 @@ class DGScriptInstance:
 
         res = self.eval_expr(cond)
 
-        i = self.depth[-1][1]
+        i = self.depth[-1][1] + 1
         total = len(self.lines)
         while i < total:
             line = self.get_line(i)
@@ -507,28 +589,34 @@ class DGScriptInstance:
                 pass
 
             if line.startswith("case ") and self.truthy(self.eval_op("==", res, line[5:])):
-                return i
+                return i + 1
 
             elif line == "default" or line.startswith("default "):
-                return i
+                return i + 1
 
-            elif line.startswith("end"):
+            elif line == "done" or line.startswith("done "):
                 return i
 
             elif line.startswith("if "):
                 self.depth.append((Nest.IF, i))
-                i = self.find_done()
+                i = self.find_end() + 1
                 self.depth.pop()
+                continue
 
             elif line.startswith("switch "):
                 self.depth.append((Nest.SWITCH, i))
-                i = self.find_done()
+                i = self.find_done() + 1
                 self.depth.pop()
+                continue
 
             elif line.startswith("while "):
                 self.depth.append((Nest.WHILE, i))
-                i = self.find_done()
+                i = self.find_done() + 1
                 self.depth.pop()
+                continue
+
+            elif line.startswith("end ") or line == "end":
+                raise DGScriptError("'end' outside of an if block")
 
             elif line.startswith("elseif "):
                 raise DGScriptError("'elseif' outside of an if block")
@@ -538,24 +626,153 @@ class DGScriptInstance:
 
             i += 1
 
-        raise DGScriptError("'if' without corresponding end")
+        raise DGScriptError("'switch' without corresponding done")
 
-    _re_expr = re.compile(r"^(?P<everything>(?P<var>\w+)(?:.(?P<field>\w+?)?)?(?P<call>\((?P<arg>[\w| ]+)?\))?)$")
+    _re_expr = re.compile(r"^(?P<everything>(?P<varname>\w+)(?:.(?P<field>\w+?)?)?(?P<call>\((?P<arg>[\w| ]+)?\))?)$")
 
-    def eval_var(self, varname: str, field: str, call: str, arg: str) -> str:
-        pass
+    _re_dbref = re.compile(r"^#\d+$")
+
+    def get_members(self, data: str):
+        start = 0
+        i = 0
+        member = ""
+        call = False
+        arg = ""
+        try:
+            while True:
+                match data[i]:
+                    case ".":
+                        yield {"member": member, "call": call, "arg": arg}
+                        member = ""
+                        call = False
+                        arg = ""
+                    case "(":
+                        m = matching_paren(data, i)
+                        if m != -1:
+                            arg = data[i+1:m]
+                            call = True
+                            i = m + 1
+                            continue
+                    case _:
+                        if call:
+                            pass
+                        else:
+                            member += data[i]
+                i += 1
+
+        except IndexError as err:
+            yield {"member": member, "call": call, "arg": arg}
+
+    def eval_var(self, data: str) -> str:
+
+        def _db_check(text):
+            if hasattr(text, "dbref"):
+                return text
+            if self._re_dbref.match(text):
+                if (found := ObjectDB.objects.filter(id=int(text[1:])).first()):
+                    return found
+            return text
+
+        last_mem = None
+        for mem in self.get_members(data):
+            if hasattr(last_mem, "dbref"):
+                result = last_mem.dgscripts.evaluate(self, **mem)
+                last_mem = _db_check(result)
+            elif callable(last_mem):
+                result = last_mem(self, **mem)
+                last_mem = _db_check(result)
+                last_mem = result
+            elif isinstance(last_mem, str):
+                # strings CANNOT have members.
+                return ""
+            elif last_mem is not None:
+                # safety check
+                return ""
+            else:
+                # this is probably a special var. Let's check those first.
+                if (found := DG_VARS.get(mem["member"].lower(), None)):
+                    if callable(found):
+                        last_mem = found
+                    elif isinstance(found, str):
+                        last_mem = _db_check(found)
+                        last_mem = found
+                else:
+                    v = self.vars.get(mem["member"].lower(), "")
+                    last_mem = _db_check(v)
+
+        while callable(last_mem):
+            last_mem = last_mem(self)
+
+        if not isinstance(last_mem, str):
+            return ""
+        return last_mem
+
+
+        if self._re_dbref.match(varname):
+            # this is a dbref. we should look it up.
+            if (found := ObjectDB.objects.filter(id=int(varname[1:])).first()):
+                return found.dgscripts.evaluate(self, varname, field, call, arg)
+            return ""
+
+        if (func := getattr(self, f"eval_var_{varname}", None)):
+            return func(varname, field, call, arg)
+
+        var = self.vars.get(varname, "")
+
+        if isinstance(var, str):
+            if self._re_dbref.match(var):
+                # variable contains a dbref. look it up.
+                if (found := ObjectDB.objects.filter(id=int(var[1:])).first()):
+                    return found.dgscripts.evaluate(self, varname, field, call, arg)
+                return ""
+            return var
+        else:
+            # if it's not a string but it exists, it -has- to be an actor.
+            return var.dgscripts.evaluate(self, varname, field, call, arg)
+
 
     def get_var(self, varname: str, context: int = -1) -> typing.Optional[str]:
         pass
 
     def var_subst(self, line: str) -> str:
-        pass
+        print(f"VAR_SUBST: {line}")
+        out = ""
+        i = 0
+        escaped = False
+
+        try:
+            while True:
+                if escaped:
+                    i += 1
+                    escaped = False
+                    continue
+
+                match line[i]:
+                    case "\\":
+                        escaped = True
+                    case "%":
+                        m = matching_perc(line, i)
+                        if m != -1:
+                            # we now have a sub-section. But there might be more %-sections!
+                            # so, we recurse...
+                            recursed = self.var_subst(line[i+1:m])
+                            # now confident that all nested variables are evaluated...
+                            out += self.eval_var(recursed)
+                            i = m + 1
+                            continue
+                    case _:
+                        out += line[i]
+
+                i += 1
+
+        except IndexError:
+            return out
 
     def process_eval(self, cmd: str):
         args = cmd.split(" ", 2)
 
         if len(args) != 3:
-            self.script_log(f"eval w/o an arg: {cmd}")
+            self.script_log(f"eval w/o an arg: {args}")
             return
 
         self.vars[args[1]] = self.eval_expr(args[2])
@@ -575,39 +792,80 @@ class DGScriptInstance:
     def do_dg_affect(self, cmd: str):
         pass
 
-    def process_global(self, cmd: str):
+    def cmd_global(self, cmd: str):
         pass
 
-    def process_context(self, cmd: str):
+    def cmd_context(self, cmd: str):
         pass
 
-    def process_rdelete(self, cmd: str):
-        pass
+    def cmd_rdelete(self, cmd: str):
+        args = cmd.split()
+        if len(args) < 2:
+            self.script_log(f"rdelete with improper arg: {cmd}")
+            return
+        if args[1] not in self.vars:
+            self.script_log(f"rdelete missing target var: {cmd}")
+            return
+        if not (target := self.handler.owner.search(args[2], use_dbref=True)):
+            self.script_log(f"rdelete target not found: {cmd}")
+            return
+        target.dgscripts.vars
+        target.dgscripts.vars[self.context].pop(args[1])
+        target.dgscripts.save()
 
-    def process_return(self, cmd: str) -> int:
-        pass
+    def cmd_remote(self, cmd: str):
+        args = cmd.split()
+        if len(args) < 2:
+            self.script_log(f"remote with improper arg: {cmd}")
+            return
+        if args[1] not in self.vars:
+            self.script_log(f"remote missing local var: {cmd}")
+            return
+        if not (target := self.handler.owner.search(args[2], use_dbref=True)):
+            self.script_log(f"remote target not found: {cmd}")
+            return
+        target.dgscripts.vars[self.context][args[1]] = self.vars[args[1]]
+        target.dgscripts.save()
 
-    def process_set(self, cmd: str):
-        args = cmd.split(" ")
-        if len(args) != 3:
+    def cmd_set(self, cmd: str):
+        args = cmd.split()
+        if len(args) < 2:
             self.script_log(f"set with improper arg: {cmd}")
             return
+        if len(args) < 3:
+            args.append("")
         self.vars[args[1]] = args[2]
 
-    def process_unset(self, cmd: str):
-        args = cmd.split(" ")
+    def cmd_unset(self, cmd: str):
+        args = cmd.split()
         if len(args) != 2:
             self.script_log(f"unset with improper arg: {cmd}")
             return
         self.vars.pop(args[1], None)
 
-    def process_wait(self, cmd: str):
+    def cmd_wait(self, cmd: str):
+        args = cmd.split()
+        if len(args) < 2:
+            args.append("1")
+
+        if not args[1].isnumeric():
+            self.script_log(f"wait with improper arg: {args}")
+            return 0
+
+        if len(args) < 3:
+            args.append("s")
+
+        match args[2].lower():
+            case "s" | "sec" | "second" | "seconds":
+                return float(args[1])
+            case _:
+                return float(args[1])
+
+
+    def cmd_detach(self, cmd: str):
         pass
 
-    def process_detach(self, cmd: str):
-        pass
-
-    def process_attach(self, cmd: str):
+    def cmd_attach(self, cmd: str):
         pass
 
 
@@ -627,7 +885,7 @@ class DGHandler:
 
     def load(self):
         for i in self.owner.dg_scripts.all():
-            self.scripts[i.script.id] = DGScriptInstance(self, i)
+            self.scripts[i.script.id] = DG_INSTANCE_CLASSES[DGType(i.script.attach_type).name.lower()](self, i)
         if not self.scripts:
             if self.owner.db.triggers:
                 for i in self.owner.db.triggers:
@@ -645,7 +903,7 @@ class DGHandler:
             new_dg, created = self.owner.dg_scripts.get_or_create(db_script=dg)
             if created:
                 new_dg.save()
-            self.scripts[dg.id] = DGScriptInstance(self, new_dg)
+            self.scripts[dg.id] = DG_INSTANCE_CLASSES[DGType(dg.attach_type).name.lower()](self, new_dg)
 
     def detach(self, script_id):
         if (script := self.scripts.pop(script_id, None)):
@@ -663,8 +921,20 @@ class DGHandler:
             if v.state > 2:
                 v.reset()
 
+    def reset_active(self):
+        for k, v in self.scripts.items():
+            if v.state > 0:
+                v.reset()
+
+    def resume(self):
+        for k, v in self.scripts.items():
+            if v.state == DGState.WAITING:
+                v.execute()
+
     def trigger_random(self):
-        pass
+        for s in self.get_ready(MobTriggers.RANDOM):
+            if randint(1, 100) <= s.proto.narg:
+                s.execute()
 
     def trigger_given(self, giver, getter, **kwargs):
         pass
@@ -676,26 +946,28 @@ class DGHandler:
         pass
 
     def trigger_speech(self, speech, speaker, **kwargs):
-        pass
+        for s in self.get_ready(MobTriggers.SPEECH):
+            s.vars["actor"] = speaker
+            s.vars["speech"] = speech
+            s.execute()
 
     def trigger_act(self, action, actor, **kwargs):
         pass
 
     def trigger_drop(self, item, dropper, **kwargs):
-        pass
+        for v in self.get_ready(RoomTriggers.ENTER):
+            if randint(1, 100) <= v.proto.db_narg:
+                v.vars["object"] = item
+                v.vars["actor"] = dropper
+                return v.execute()
+        return True
 
     def trigger_enter(self, direction, traveler, **kwargs):
-        pass
-
-    def trigger_greet(self, direction, traveler, **kwargs):
-        pass
-
-    def trigger_greet_all(self, direction, traveler, **kwargs):
-        pass
-
-
-class DGMobHandler(DGHandler):
-    dg_type = DGType.MOB
+        for v in self.get_ready(RoomTriggers.ENTER):
+            if randint(1, 100) <= v.proto.db_narg:
+                v.vars["direction"] = direction
+                v.vars["actor"] = traveler
+                v.execute()
 
     def trigger_greet(self, direction, traveler, **kwargs):
         for v in self.get_ready(MobTriggers.GREET):
@@ -703,6 +975,38 @@ class DGMobHandler(DGHandler):
                 v.vars["direction"] = direction
                 v.vars["actor"] = traveler
                 v.execute()
+
+    def trigger_greet_all(self, direction, traveler, **kwargs):
+        for v in self.get_ready(MobTriggers.GREET_ALL):
+            v.vars["direction"] = direction
+            v.vars["actor"] = traveler
+            v.execute()
+
+    def trigger_zreset(self):
+        for v in self.get_ready(RoomTriggers.RESET):
+            v.execute()
+
+    def evaluate(self, script: DGScriptInstance, member: str = "", call: bool = False, arg: str = "") -> str:
+        if (func := DG_FUNCTIONS[self.owner.obj_type].get(member.lower(), None)):
+            return func(self.owner, script, arg if call else None)
+        return self.vars[script.context].get(member.lower(), "")
+
+
+class DGScriptItemInstance(DGScriptInstance):
+    pass
+
+
+class DGScriptCharacterInstance(DGScriptInstance):
+    pass
+
+
+class DGScriptRoomInstance(DGScriptInstance):
+    pass
+
+
+class DGMobHandler(DGHandler):
+    dg_type = DGType.CHARACTER
+
 
 
 class DGItemHandler(DGHandler):
@@ -712,3 +1016,25 @@ class DGItemHandler(DGHandler):
 class DGRoomHandler(DGHandler):
     dg_type = DGType.ROOM
 
+
+def stat_get_set(obj, script, field, handler, arg: str) -> str:
+    """
+    Util function to make writing dgfuncs easier.
+    """
+    if arg:
+        try:
+            getattr(obj, handler).mod(int(arg))
+        except (ValueError, TypeError):
+            script.script_log(f"invalid arg for {field}: {arg}")
+    return str(getattr(obj, handler).effective())
+
+
+class DGCommand(Command):
+
+    def func(self):
+        if (found := self.obj.dgscripts.scripts.get(self.script_id, None)):
+            if found.state == DGState.DORMANT:
+                found.vars["actor"] = self.caller
+                found.vars["arg"] = self.args.strip()
+                found.vars["cmd"] = self.cmdstring
+                found.execute()

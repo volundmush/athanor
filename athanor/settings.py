@@ -1,4 +1,6 @@
 from evennia.settings_default import *
+from collections import defaultdict as _ddict
+
 
 INSTALLED_APPS.extend([
     "athanor.plays",
@@ -41,3 +43,28 @@ SAFE_FALLBACK = DEFAULT_HOME
 PLAY_TIMEOUT_SECONDS = 30.0
 
 INPUT_FUNC_MODULES.insert(1, "athanor.inputfuncs")
+
+DG_INSTANCE_CLASSES = {
+    "item": "athanor.dgscripts.dgscripts.DGScriptItemInstance",
+    "character": "athanor.dgscripts.dgscripts.DGScriptCharacterInstance",
+    "room": "athanor.dgscripts.dgscripts.DGScriptRoomInstance"
+}
+
+DG_VARS = [
+    "athanor.dgscripts.dgvars"
+]
+
+DG_FUNCTIONS = _ddict(list)
+DG_FUNCTIONS["shared"].extend([
+    "athanor.dgscripts.dgfuncs"
+])
+DG_FUNCTIONS["character"].extend([
+
+])
+DG_FUNCTIONS["item"].extend([
+
+])
+DG_FUNCTIONS["room"].extend([
+
+])
+

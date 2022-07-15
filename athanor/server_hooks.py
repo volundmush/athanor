@@ -15,6 +15,7 @@ at_server_cold_start()
 at_server_cold_stop()
 
 """
+from collections import defaultdict
 
 _ran_start = False
 
@@ -31,7 +32,26 @@ def at_always_start():
 
     from evennia.utils.utils import callables_from_module, class_from_module
     from django.conf import settings
-    from athanor import MODIFIERS_ID, MODIFIERS_NAMES, SYSTEMS
+    from athanor import MODIFIERS_ID, MODIFIERS_NAMES, SYSTEMS, DG_VARS, DG_FUNCTIONS, DG_INSTANCE_CLASSES
+
+    for k, v in settings.DG_INSTANCE_CLASSES.items():
+        DG_INSTANCE_CLASSES[k] = class_from_module(v)
+
+    for p in settings.DG_VARS:
+        DG_VARS.update({k.lower(): v for k, v in callables_from_module(p).items()})
+
+    dg_temp = defaultdict(dict)
+    for category, mod_paths in settings.DG_FUNCTIONS.items():
+        for func_path in mod_paths:
+            for k, v in callables_from_module(func_path).items():
+                dg_temp[category][k.lower()] = v
+    shared = dict(dg_temp["shared"])
+
+    for k, v in dg_temp.items():
+        if k == "shared":
+            continue
+        DG_FUNCTIONS[k] = dict(shared)
+        DG_FUNCTIONS[k].update(v)
 
     for mod_path in settings.MODIFIER_PATHS:
         for k, v in callables_from_module(mod_path).items():
@@ -62,9 +82,9 @@ def at_server_start():
         v.at_start()
 
     for k, v in SYSTEMS.items():
+        #continue
         if v.interval > 0:
-            v.looper = task.LoopingCall(lambda: Deferred.fromCoroutine(v.update()))
-            v.task = v.looper.start(v.interval)
+            v.task = Deferred.fromCoroutine(v.run())
 
 
 def at_server_stop():

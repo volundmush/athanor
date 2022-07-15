@@ -7,6 +7,7 @@ from athanor.utils import utcnow
 from athanor.dgscripts.dgscripts import DGState
 from django.db.models import F, Q
 from twisted.internet import reactor, task
+import time
 
 def sleep_for(delay):
     return task.deferLater(reactor, delay, lambda: None)
@@ -29,8 +30,22 @@ class System:
     async def update(self):
         pass
 
+    async def run(self):
+        if not self.interval > 0:
+            return
+        while True:
+            start = time.monotonic()
+            await self.update()
+            after = time.monotonic()
+            diff = after - start
+            remaining = self.interval - diff
+            if remaining > 0:
+                await sleep_for(remaining)
+
     def at_stop(self):
-        pass
+        print(f"{self} got shutdown signal!")
+        if self.task:
+            self.task.cancel()
 
     def at_reload_start(self):
         pass
@@ -59,7 +74,7 @@ class CmdQueueSystem(System):
             if obj.cmdqueue.check(self.interval):
                 # put any objects with commands still pending back into the queue.
                 PENDING_COMMANDS.add(obj)
-            await sleep(0)
+            await sleep_for(0.002)
 
 
 class PlaySystem(System):
@@ -99,12 +114,21 @@ class DGWaitSystem(System):
             if not (obj := ObjectDB.objects.filter(id=i).first()):
                 continue
             obj.dgscripts.resume()
-            await sleep_for(0)
+            await sleep_for(0.01)
 
 
 class DGResetSystem(System):
     name = "dgreset"
     interval = 1.0
+
+    def at_start(self):
+        obj_ids = set(DGInstanceDB.objects.filter(db_state__gt=0).values_list("db_holder", flat=True))
+
+        for i in obj_ids:
+            if not (obj := ObjectDB.objects.filter(id=i).first()):
+                continue
+            obj.dgscripts.reset_active()
+
 
     async def update(self):
         obj_ids = set(DGInstanceDB.objects.filter(db_state__gt=2).values_list("db_holder", flat=True))
@@ -113,7 +137,7 @@ class DGResetSystem(System):
             if not (obj := ObjectDB.objects.filter(id=i).first()):
                 continue
             obj.dgscripts.reset_finished()
-            await sleep_for(0)
+            await sleep_for(0.01)
 
 
 class DGRandomSystem(System):
@@ -121,10 +145,10 @@ class DGRandomSystem(System):
     interval = 13.0
 
     async def update(self):
-        obj_ids = set(DGInstanceDB.objects.filter(Q(db_state=0) & F('db_script_db_trigger_type').bitand(2)).values_list("db_holder", flat=True))
+        obj_ids = set(DGInstanceDB.objects.filter(Q(db_state=0) & F('db_script__db_trigger_type').bitand(2)).values_list("db_holder", flat=True))
 
         for i in obj_ids:
             if not (obj := ObjectDB.objects.filter(id=i).first()):
                 continue
             obj.dgscripts.trigger_random()
-            await sleep_for(0)
+            await sleep_for(0.01)
