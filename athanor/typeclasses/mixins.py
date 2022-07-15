@@ -159,6 +159,12 @@ class AthanorObj:
             case "vehicle":
                 self.vehicles.add(moved_obj)
 
+    def ignore_equipped_weight(self):
+        return False
+
+    def ignore_carried_weight(self):
+        return False
+
     def can_carry_anything(self):
         return self.locks.check_lockstring(self, "perm(Builder)")
 
