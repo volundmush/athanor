@@ -1,4 +1,5 @@
 import typing
+from collections import defaultdict
 from itertools import chain
 from django.core.exceptions import ObjectDoesNotExist
 from evennia.utils.utils import lazy_property, make_iter, to_str, logger
@@ -9,6 +10,7 @@ from evennia.utils.ansi import strip_ansi
 from athanor.dgscripts.dgscripts import DGHandler, DGCommand, MobTriggers
 from twisted.internet.defer import inlineCallbacks, returnValue
 from evennia import CmdSet
+from athanor import EQUIP_SLOTS
 
 
 class AthanorObj:
@@ -18,6 +20,23 @@ class AthanorObj:
     # which provide an .all() method that returns an iterable of Modifiers.
     # Order according to preference.
     modifier_attrs = []
+
+    def all_equip_slots(self):
+        """
+        Replace this method with one for this typeclasses's equip slots.
+        """
+        return dict(EQUIP_SLOTS)
+
+    def get_equip_slots(self, skip_occupied=False) -> dict[str, typing.Type["EquipSlot"]]:
+        if not skip_occupied:
+            return self.all_equip_slots()
+        return {k: v for k, v in self.all_equip_slots().items() if not self.equipment.get(k)}
+
+    def get_equip_types(self, skip_occupied=False) -> dict[str, list[typing.Type["EquipSlot"]]]:
+        out = defaultdict(list)
+        for k, v in self.get_equip_slots(skip_occupied=skip_occupied).items():
+            out[v.slot_type].append(v)
+        return out
 
     def get_cmd_objects(self):
         if (puppeteer := self.get_puppeteer()):
@@ -33,7 +52,6 @@ class AthanorObj:
             if v.proto.db_trigger_type & MobTriggers.COMMAND:
                 dg_cmdset.add(DGCommand(key=v.proto.arglist, script_id=k, obj=self))
         return dg_cmdset
-
 
     @inlineCallbacks
     def get_location_cmdsets(self, caller, current, cmdsets):
@@ -159,14 +177,148 @@ class AthanorObj:
             case "vehicle":
                 self.vehicles.add(moved_obj)
 
+    # equip stguff
+    def can_equip_anything(self):
+        return self.is_builder()
+
+    equipped_checks = []
+
+    def can_be_equipped(self, wearer, slot_class, quiet=False, **kwargs):
+        reasons = list()
+        for check in self.equipped_checks:
+            if (func := getattr(self, check, None)):
+                if (reason := func(wearer, slot_class, **kwargs)):
+                    reasons.append(reason)
+
+        if reasons:
+            if wearer.can_equip_anything():
+                if not quiet:
+                    wearer.msg(ev_to_rich(
+                        f"Your buildpowers enable you to equip {self.get_display_name(looker=wearer)} despite: {', '.join(reasons)}"))
+                return True
+            else:
+                if not quiet:
+                    wearer.msg(ev_to_rich(
+                        f"You can't equip {self.get_display_name(looker=wearer)} because: {', '.join(reasons)}"))
+                return False
+        else:
+            return True
+
+    equip_checks = []
+
+    def can_equip_object(self, item, slot_class, quiet=False, **kwargs):
+        reasons = list()
+        for check in self.equip_checks:
+            if (func := getattr(self, check, None)):
+                if (reason := func(item, slot_class, **kwargs)):
+                    reasons.append(reason)
+
+        if reasons:
+            if self.can_equip_anything():
+                if not quiet:
+                    self.msg(ev_to_rich(
+                        f"Your buildpowers enable you to equip {item.get_display_name(looker=self)} despite: {', '.join(reasons)}"))
+                return True
+            else:
+                if not quiet:
+                    self.msg(ev_to_rich(
+                        f"You can't equip {item.get_display_name(looker=self)} because: {', '.join(reasons)}"))
+                return False
+        else:
+            return True
+
+    def at_pre_equip(self, wearer, slot_class, **kwargs):
+        """
+        Called when wearer is equipping self.
+        If it returns falsy, the equip should be cancelled.
+        """
+        if not self.can_be_equipped(wearer, slot_class, **kwargs):
+            return False
+        if not wearer.can_equip_object(self, quiet=False):
+            return False
+        return True
+
+    def at_equip(self, wearer, slot, **kwargs):
+        pass
+
+
+    # REMOVE STUFF
+    def can_remove_anything(self):
+        return self.is_builder()
+
+    removed_checks = []
+
+    def can_be_removed(self, wearer, slot, quiet=False, **kwargs):
+        reasons = list()
+        for check in self.removed_checks:
+            if (func := getattr(self, check, None)):
+                if (reason := func(wearer, slot, **kwargs)):
+                    reasons.append(reason)
+
+        if reasons:
+            if wearer.can_remove_anything():
+                if not quiet:
+                    wearer.msg(ev_to_rich(
+                        f"Your buildpowers enable you to remove {self.get_display_name(looker=wearer)} despite: {', '.join(reasons)}"))
+                return True
+            else:
+                if not quiet:
+                    wearer.msg(ev_to_rich(
+                        f"You can't remove {self.get_display_name(looker=wearer)} because: {', '.join(reasons)}"))
+                return False
+        else:
+            return True
+
+    remove_checks = []
+
+    def can_remove_object(self, item, slot, quiet=False, **kwargs):
+        reasons = list()
+        for check in self.remove_checks:
+            if (func := getattr(self, check, None)):
+                if (reason := func(item, slot, **kwargs)):
+                    reasons.append(reason)
+
+        if reasons:
+            if self.can_remove_anything():
+                if not quiet:
+                    self.msg(ev_to_rich(
+                        f"Your buildpowers enable you to remove {item.get_display_name(looker=self)} despite: {', '.join(reasons)}"))
+                return True
+            else:
+                if not quiet:
+                    self.msg(ev_to_rich(
+                        f"You can't remove {item.get_display_name(looker=self)} because: {', '.join(reasons)}"))
+                return False
+        else:
+            return True
+
+    def at_pre_remove(self, wearer, slot, **kwargs):
+        """
+        Called when wearer is equipping self.
+        If it returns falsy, the equip should be cancelled.
+        """
+        if not self.can_be_removed(wearer, slot, **kwargs):
+            return False
+        if not wearer.can_remove_object(self, quiet=False):
+            return False
+        return True
+
+    def at_remove(self, wearer, slot, **kwargs):
+        pass
+
+
+
     def ignore_equipped_weight(self):
         return False
 
     def ignore_carried_weight(self):
         return False
 
-    def can_carry_anything(self):
+    def is_builder(self):
         return self.locks.check_lockstring(self, "perm(Builder)")
+
+    def can_carry_anything(self):
+        return self.is_builder()
 
     carry_checks = ["carry_check_weight"]
 
@@ -184,11 +336,13 @@ class AthanorObj:
         if reasons:
             if self.can_carry_anything():
                 if not quiet:
-                    self.msg(ev_to_rich(f"Your buildpowers enable you to carry {obj.get_display_name(looker=self)} despite: {', '.join(reasons)}"))
+                    self.msg(ev_to_rich(
+                        f"Your buildpowers enable you to carry {obj.get_display_name(looker=self)} despite: {', '.join(reasons)}"))
                 return True
             else:
                 if not quiet:
-                    self.msg(ev_to_rich(f"You can't carry {obj.get_display_name(looker=self)} because: {', '.join(reasons)}"))
+                    self.msg(ev_to_rich(
+                        f"You can't carry {obj.get_display_name(looker=self)} because: {', '.join(reasons)}"))
                 return False
         else:
             return True
@@ -205,11 +359,13 @@ class AthanorObj:
         if reasons:
             if self.can_carry_anything():
                 if not quiet:
-                    getter.msg(ev_to_rich(f"Your buildpowers enable you to carry {self.get_display_name(looker=getter)} despite: {', '.join(reasons)}"))
+                    getter.msg(ev_to_rich(
+                        f"Your buildpowers enable you to carry {self.get_display_name(looker=getter)} despite: {', '.join(reasons)}"))
                 return True
             else:
                 if not quiet:
-                    getter.msg(ev_to_rich(f"You can't carry {self.get_display_name(looker=getter)} because: {', '.join(reasons)}"))
+                    getter.msg(ev_to_rich(
+                        f"You can't carry {self.get_display_name(looker=getter)} because: {', '.join(reasons)}"))
                 return False
         else:
             return True
@@ -221,16 +377,9 @@ class AthanorObj:
             return False
         return True
 
-    def at_pre_equip(self, user, slot, **kwargs):
-        """
-        Called by the equip command and works exactly like the at_pre_get hook.
-        """
-        return False
-
-    def equip_to(self, user, slot: int, equip_hooks = True, quiet = False, **kwargs):
+    def equip_to(self, user, slot: int, equip_hooks=True, quiet=False, **kwargs):
 
         old_loc = self.location
-
         if old_loc and old_loc != user:
             old_loc.at_object_leave(self, user)
 
@@ -248,13 +397,45 @@ class AthanorObj:
             self.at_post_equip(user, slot, **kwargs)
 
     def announce_equip_to(self, user, slot: int, **kwargs):
-        pass
+        user.act(text=f"$You() {slot.wear_verb} $you(item) {slot.wear_display}.", mapping={"item": self})
 
     def at_object_equip(self, item, slot: int, **kwargs):
         pass
 
     def at_post_equip(self, user, slot: int, **kwargs):
         pass
+
+    def unequip(self, equip_hooks=True, quiet=False, **kwargs):
+        if not self.db.equipped:
+            return False
+        slot_key, user = self.db.equipped
+        slot = user.equipment.data[slot_key]
+
+        if equip_hooks:
+            user.at_object_remove(self, slot, **kwargs)
+        if not quiet:
+            self.announce_remove_from(user, slot, **kwargs)
+
+        user.equipment.remove(slot.key)
+        user.inventory.add(self)
+
+        if equip_hooks:
+            self.at_post_remove(user, slot, **kwargs)
+
+    def announce_remove_from(self, user, slot: int, **kwargs):
+        user.act(text=f"$You() {slot.remove_verb} $you(item) {slot.remove_display}.", mapping={"item": self})
+
+    def at_object_remove(self, item, slot: int, **kwargs):
+        pass
+
+    def at_post_remove(self, user, slot: int, **kwargs):
+        pass
+
+
+    def act(self, text=None, mapping=None, msg_type="pose", exclude=None, **kwargs):
+        if self.location:
+            self.location.msg_contents(text=(text, {"type": msg_type}), from_obj=self, mapping=mapping, exclude=exclude,
+                                       **kwargs)
 
     def get_play(self):
         try:
@@ -358,7 +539,7 @@ class AthanorObj:
     def at_hear(self, text, from_obj, msg_type, extra, **kwargs):
         text = strip_ansi(text)
         first_quote = text.find('"')
-        speech = text[first_quote+1:-1]
+        speech = text[first_quote + 1:-1]
         self.dgscripts.trigger_speech(speech, from_obj, **kwargs)
 
     def at_see(self, text, from_obj, msg_type, extra, **kwargs):

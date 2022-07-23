@@ -68,3 +68,6 @@ DG_FUNCTIONS["room"].extend([
 
 ])
 
+EQUIP_CLASS_PATHS = [
+    "athanor.equip"
+]

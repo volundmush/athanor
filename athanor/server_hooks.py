@@ -33,6 +33,14 @@ def at_always_start():
     from evennia.utils.utils import callables_from_module, class_from_module
     from django.conf import settings
     from athanor import MODIFIERS_ID, MODIFIERS_NAMES, SYSTEMS, DG_VARS, DG_FUNCTIONS, DG_INSTANCE_CLASSES
+    from athanor import EQUIP_SLOTS
+
+    for p in settings.EQUIP_CLASS_PATHS:
+        slots = callables_from_module(p)
+        for k, v in slots.items():
+            if not v.key:
+                continue
+            EQUIP_SLOTS[v.key] = v
 
     for k, v in settings.DG_INSTANCE_CLASSES.items():
         DG_INSTANCE_CLASSES[k] = class_from_module(v)

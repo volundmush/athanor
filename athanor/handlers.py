@@ -1,3 +1,7 @@
+from athanor import EQUIP_SLOTS
+import typing
+from athanor.exceptions import DatabaseError
+
 
 class InventoryHandler:
     attr_name = "inventory"
@@ -42,30 +46,42 @@ class EquipmentHandler:
 
     def __init__(self, owner):
         self.owner = owner
-        self.data = None
+        self.data = dict()
         self.load()
 
     def load(self):
         if not self.owner.attributes.has(self.attr_name):
             self.owner.attributes.add(self.attr_name, dict())
-        self.data = self.owner.attributes.get(self.attr_name)
+        for k, v in self.owner.attributes.get(self.attr_name).items():
+            self.data[k] = EQUIP_SLOTS[k](self, v)
 
     def all(self):
-        return list(self.data.values())
+        for v in self.data.values():
+            yield v.item
 
     def get(self, slot: int):
         return self.data.get(slot, None)
 
-    def equip(self, slot: int, obj):
-        self.data[slot] = obj
-        obj.location = self.owner
-        obj.attributes.add(self.reverse_name, (slot, self.owner))
+    def save(self):
+        self.owner.attributes.add(self.attr_name, {k.key: v.item for k, v in self.data.items()})
 
-    def remove(self, slot: int):
+    def equip(self, slot: typing.Union[str, typing.Type["EquipSlot"]], obj):
+        if isinstance(slot, str):
+            if not (found := EQUIP_SLOTS.get(slot, None)):
+                raise DatabaseError(f"Non-Existent Equip Slot '{slot}'")
+            slot = found
+        slot_obj = slot(self, obj)
+        self.data[slot.key] = slot_obj
+        obj.location = self.owner
+        obj.attributes.add(self.reverse_name, (slot.key, self.owner))
+        self.save()
+        return slot_obj
+
+    def remove(self, slot: str):
         found = self.data.pop(slot, None)
         if found:
             found.attributes.remove(self.reverse_name)
-        return found
+        return found.item
 
 
 class WeightHandler:
