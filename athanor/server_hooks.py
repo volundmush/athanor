@@ -17,16 +17,8 @@ at_server_cold_stop()
 """
 from collections import defaultdict
 
-_ran_start = False
 
-
-def at_always_start():
-    global _ran_start
-    if _ran_start:
-        return
-    else:
-        _ran_start = True
-
+def at_server_init():
     from mudrich import install_mudrich
     install_mudrich()
 
@@ -38,9 +30,9 @@ def at_always_start():
     for p in settings.EQUIP_CLASS_PATHS:
         slots = callables_from_module(p)
         for k, v in slots.items():
-            if not v.key:
+            if not v.key and v.category:
                 continue
-            EQUIP_SLOTS[v.key] = v
+            EQUIP_SLOTS[v.category][v.key] = v
 
     for k, v in settings.DG_INSTANCE_CLASSES.items():
         DG_INSTANCE_CLASSES[k] = class_from_module(v)
@@ -74,13 +66,14 @@ def at_always_start():
     for k, v in SYSTEMS.items():
         v.at_init()
 
+    if settings.START_FUNCTION:
+        func = class_from_module(settings.START_FUNCTION)
 
 def at_server_start():
     """
     This is called every time the server starts up, regardless of
     how it was shut down.
     """
-    at_always_start()
 
     from athanor import SYSTEMS
     from twisted.internet import task
@@ -112,7 +105,6 @@ def at_server_reload_start():
     """
     This is called only when server starts back up after a reload.
     """
-    at_always_start()
 
     from athanor import SYSTEMS
 
@@ -135,7 +127,6 @@ def at_server_cold_start():
     This is called only when the server starts "cold", i.e. after a
     shutdown or a reset.
     """
-    at_always_start()
 
     from athanor import SYSTEMS
 

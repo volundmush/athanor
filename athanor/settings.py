@@ -30,7 +30,7 @@ BASE_DGSCRIPT_TYPECLASS = "athanor.dgscripts.dgscripts.DefaultDGScript"
 
 CMDSET_PLAY = "athanor.commands.cmdsets.PlayCmdSet"
 
-AT_SERVER_STARTSTOP_MODULE = "athanor.server_hooks"
+AT_SERVER_STARTSTOP_MODULE = ["athanor.server_hooks", AT_SERVER_STARTSTOP_MODULE]
 
 # The number of characters that can be logged-in per account simultaneously. Builder permissions override this.
 PLAYS_PER_ACCOUNT = 1
@@ -69,5 +69,8 @@ DG_FUNCTIONS["room"].extend([
 ])
 
 EQUIP_CLASS_PATHS = [
-    "athanor.equip"
+
 ]
+
+
+COMMAND_PARSER = "athanor.commands.cmdparser.cmdparser"

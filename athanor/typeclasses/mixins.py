@@ -10,7 +10,6 @@ from evennia.utils.ansi import strip_ansi
 from athanor.dgscripts.dgscripts import DGHandler, DGCommand, MobTriggers
 from twisted.internet.defer import inlineCallbacks, returnValue
 from evennia import CmdSet
-from athanor import EQUIP_SLOTS
 
 
 class AthanorObj:
@@ -21,20 +20,23 @@ class AthanorObj:
     # Order according to preference.
     modifier_attrs = []
 
-    def all_equip_slots(self):
+    def all_equip_slots(self) -> dict[str, typing.Type["EquipSlot"]]:
         """
         Replace this method with one for this typeclasses's equip slots.
         """
-        return dict(EQUIP_SLOTS)
+        return dict()
 
-    def get_equip_slots(self, skip_occupied=False) -> dict[str, typing.Type["EquipSlot"]]:
+    def available_equip_slots(self, **kwargs) -> dict[str, typing.Type["EquipSlot"]]:
+        return {k: v for k, v in self.all_equip_slots() if v.is_available(self, **kwargs)}
+
+    def get_equip_slots(self, skip_occupied=False, **kwargs) -> dict[str, typing.Type["EquipSlot"]]:
         if not skip_occupied:
-            return self.all_equip_slots()
-        return {k: v for k, v in self.all_equip_slots().items() if not self.equipment.get(k)}
+            return self.available_equip_slots()
+        return {k: v for k, v in self.available_equip_slots(**kwargs).items() if not self.equipment.get(k)}
 
-    def get_equip_types(self, skip_occupied=False) -> dict[str, list[typing.Type["EquipSlot"]]]:
+    def get_equip_types(self, skip_occupied=False, **kwargs) -> dict[str, list[typing.Type["EquipSlot"]]]:
         out = defaultdict(list)
-        for k, v in self.get_equip_slots(skip_occupied=skip_occupied).items():
+        for k, v in self.get_equip_slots(skip_occupied=skip_occupied, **kwargs).items():
             out[v.slot_type].append(v)
         return out
 

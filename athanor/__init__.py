@@ -13,4 +13,4 @@ DG_INSTANCE_CLASSES = dict()
 
 DG_VARS = dict()
 
-EQUIP_SLOTS = dict()
+EQUIP_SLOTS = defaultdict(dict)

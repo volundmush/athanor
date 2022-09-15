@@ -168,7 +168,7 @@ class AthanorSession(ServerSession):
             if not _PlayTC:
                 _PlayTC = class_from_module(settings.BASE_PLAY_TYPECLASS)
             existing = self.account.plays.count()
-            if existing >= settings.PLAYS_PER_ACCOUNT and not self.locks.check_lockstring(self, "perm(Builder)"):
+            if existing >= settings.PLAYS_PER_ACCOUNT and not self.account.locks.check_lockstring(self.account, "perm(Builder)"):
                 raise RuntimeError(f"You have reached the maximum of {settings.PLAYS_PER_ACCOUNT} characters in play.")
             new_play = _PlayTC.create(self.account, obj)
             new_play.add_session(self)

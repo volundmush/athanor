@@ -626,7 +626,6 @@ def cmdhandler(
     if not session:
         session = cmd_objects.get("session", None)
     account = cmd_objects.get("account", None)
-    play = cmd_objects.get("play", None)
     obj = cmd_objects.get("puppet", None)
 
     try:  # catch bugs in cmdhandler itself

@@ -45,7 +45,7 @@ def fresh_uuid4(existing) -> uuid:
 
 
 def partial_match(
-    match_text: str, candidates: typing.Iterable[typing.Any], key: callable = str, exact: bool = False) -> typing.Optional[typing.Any]:
+    match_text: str, candidates: typing.Iterable[typing.Any], key: callable = str, exact: bool = False, many_results=False) -> typing.Optional[typing.Any]:
     """
     Given a list of candidates and a string to search for, does a case-insensitive partial name search against all
     candidates, preferring exact matches.
@@ -57,17 +57,27 @@ def partial_match(
             candidate list to strings.
 
     Returns:
-        Any or None.
+        Any or None, or a list[Any]
     """
     candidate_list = sorted(candidates, key=lambda item: len(key(item)))
     mlow = match_text.lower()
+    out = list()
     for candidate in candidate_list:
         can_lower = key(candidate).lower()
         if mlow == can_lower:
-            return candidate
+            if many_results:
+                out.append(candidate)
+            else:
+                return candidate
         if not exact:
             if can_lower.startswith(mlow):
-                return candidate
+                if many_results:
+                    out.append(candidate)
+                else:
+                    return candidate
+    if many_results:
+        return out
+    return None
 
 
 def generate_name(prefix: str, existing, gen_length: int = 20) -> str:
