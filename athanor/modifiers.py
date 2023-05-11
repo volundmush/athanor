@@ -6,31 +6,22 @@ from athanor import MODIFIERS_ID, MODIFIERS_NAMES
 
 class Modifier:
     """
-    A Modifier is meant to represent some kind of trait, perk, buff, status effect, or other thing that can be applied
-    to a character which would have an effect on them. This might be a stat boost, a damage over time effect, or
-    something else entirely. The modifier is meant to be subclassed and have its methods overridden to provide the
-    desired behavior.
+    A Modifier is meant to represent some kind of trait, perk, character class, race, long-lasting transformation, or
+    similar that can be applied to a character. Along with Items, these are the second major source of Effects. Most
+    Modifiers will probably simply apply and remove Effects when they're added/loaded/removed/etc, but they could be
+    subclassed to do far more than just that if desired.
 
-    Modifiers are loaded when Athanor starts, from a list of provided modules. This list is defined in settings.py and
-    can be easily extended.
+    Modifier Classes are loaded when Athanor starts, from a list of provided modules. This list is defined in
+    settings.py and can be easily extended.
 
-    Modifiers are attached to a handler, which is a class that is meant to handle the application of modifiers to the
-    character. Examples are provided below as ModifierHandler and ModifiersHandler.
+    Modifiers, like Items, are attached via a character's ModifierSlots, similar to EquipSlots. Slots have a 'key' which
+    must be unique for that character, and slot_type, which determines the kind of Modifiers that it can store.
 
-    If a Modifier instance attached to a character should keep track of persistent state, it's recommended to use the
-    categorized DB Attributes on the owner.
-
-    For example, self.owner.attributes.get(category=f"modifiers:{self.category}:{self.modifier_id}, key="field") as the
-    default scheme.
-
-    Note that the default implementation will remove these attributes when the Modifier is removed from the handler. If
-    the modifier should be responsive to other data persistently (such as in the case of a transformation that gets
-    better the longer you use it, but you can turn it on and off), you might want to use other Attributes for
-    storing such.
-
-    In the case of stacking, like multiple applications of Poison, it is recommended to have a single instance of the
-    Poison modifier, but to use an attribute to store how many times it's been applied, by who, and at what intensity,
-    how long until it wears off, and other details.
+    For example, a Character might have two slots: "race_1" and "race_2", which are both of slot_type "race". This
+    could allow for hybrid races or other special cases. A character might also have a slot "class" which is of type
+    "class", and thus they can only have one character class. However, since it's possible to store data about Modifiers,
+    one could easily create a Job Switch-style system ala Final Fantasy Tactics which allows for classes to have levels
+    and be changed at will.
     """
     # All modifiers have an ID attached to their class.
     modifier_id = -1
