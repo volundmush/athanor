@@ -1,14 +1,84 @@
 import typing
-from athanor import MODIFIERS_ID, MODIFIERS_NAMES
+from collections import defaultdict
 from athanor.utils import partial_match
 from athanor.exceptions import DatabaseError
+from athanor import MODIFIERS_ID, MODIFIERS_NAMES
 
 
 class Modifier:
-    modifier_id = -1
+    """
+    A Modifier is meant to represent some kind of trait, perk, buff, status effect, or other thing that can be applied
+    to a character which would have an effect on them. This might be a stat boost, a damage over time effect, or
+    something else entirely. The modifier is meant to be subclassed and have its methods overridden to provide the
+    desired behavior.
 
-    def __init__(self, owner):
+    Modifiers are loaded when Athanor starts, from a list of provided modules. This list is defined in settings.py and
+    can be easily extended.
+
+    Modifiers are attached to a handler, which is a class that is meant to handle the application of modifiers to the
+    character. Examples are provided below as ModifierHandler and ModifiersHandler.
+
+    If a Modifier instance attached to a character should keep track of persistent state, it's recommended to use the
+    categorized DB Attributes on the owner.
+
+    For example, self.owner.attributes.get(category=f"modifiers:{self.category}:{self.modifier_id}, key="field") as the
+    default scheme.
+
+    Note that the default implementation will remove these attributes when the Modifier is removed from the handler. If
+    the modifier should be responsive to other data persistently (such as in the case of a transformation that gets
+    better the longer you use it, but you can turn it on and off), you might want to use other Attributes for
+    storing such.
+
+    In the case of stacking, like multiple applications of Poison, it is recommended to have a single instance of the
+    Poison modifier, but to use an attribute to store how many times it's been applied, by who, and at what intensity,
+    how long until it wears off, and other details.
+    """
+    # All modifiers have an ID attached to their class.
+    modifier_id = -1
+    # An actual modifier must replace this with a not-empty string!
+    category = ""
+    # A tuple of unique strings which will be used to index this modifier on the Handler. This describes the 'type'
+    # of modifier this is. For example, a buff might have the tags ('buff', 'stat', 'strength') That would allow you
+    # to retrieve 'all modifiers that are buffs', 'all modifiers that affect strength', or 'all modifiers that affect
+    # stats', as an example.
+    mod_tags: typing.Tuple[str] = tuple()
+
+    def __init__(self, owner, handler):
+        """
+        Args:
+            owner (AthanorObject): The object that this modifier is attached to.
+            handler: The handler that this modifier is attached to.
+        """
         self.owner = owner
+        self.handler = handler
+
+    def attr_category(self) -> str:
+        """
+        Returns the category that this modifier should use for its persistent attributes.
+        """
+        return f"modifiers:{self.category}:{self.modifier_id}"
+
+    def set_value(self, key: str, value):
+        self.owner.attributes.add(category=self.attr_category(), key=key, value=value)
+
+    def get_value(self, key: str, default=None):
+        return self.owner.attributes.get(category=self.attr_category(), key=key,
+                                         default=default)
+
+    def on_remove(self, **kwargs):
+        """
+        This method is called when the modifier is removed from the handler. A buff expires, a status effect wears off,
+        a transformation ends, etc.
+        """
+        self.owner.attributes.remove(category=f"modifiers:{self.category}:{self.modifier_id}")
+
+    def on_add(self, **kwargs):
+        """
+        This method is called when the modifier is added to the handler. A buff is applied, a status effect is applied,
+        a transformation is entered, etc.
+
+        It's useful for setting defaults, sending messages, etc.
+        """
 
     @classmethod
     def get_name(cls):
@@ -27,111 +97,131 @@ class Modifier:
     def __repr__(self):
         return f"<{self.__class__.__name__}: {int(self)}>"
 
-    def stat_multiplier(self, obj, stat_name) -> float:
-        return 0.0
 
-    def stat_bonus(self, obj, stat_name) -> int:
-        return 0
+class _ModHandlerBase:
+
+    def __init__(self, owner, attr_name: str, mod_category: str):
+        self.owner = owner
+        self.attr_name = attr_name
+        self.mod_category = mod_category
+        self.mod_index = defaultdict(set)
+
+    def _get_modifier(self, mod) -> typing.Optional[Modifier]:
+        if hasattr(mod, "modifier_id"):
+            return mod(self.owner, self)
+        found = None
+        if isinstance(mod, int):
+            found = MODIFIERS_ID[self.mod_category].get(mod, None)
+        elif isinstance(mod, str):
+            fname = partial_match(mod, MODIFIERS_NAMES[self.mod_category].keys())
+            found = MODIFIERS_NAMES[self.mod_category].get(fname, None)
+        return found(self.owner, self) if found else None
+
+    def add_modifier(self, modifier: Modifier):
+        for stat in modifier.mod_tags:
+            self.mod_index[stat].add(modifier)
+
+    def remove_modifier(self, modifier: Modifier):
+        for stat in modifier.mod_tags:
+            self.mod_index[stat].remove(modifier)
+            if not self.mod_index[stat]:
+                del self.mod_index[stat]
+
+    def get_modifiers(self, stat_name: str):
+        return self.mod_index.get(stat_name, list())
 
 
-class FlagHandler:
+class ModifierHandler(_ModHandlerBase):
     """
-    Class used as a base for handling single Modifier types, like Race, Sensei, ItemType, RoomSector.
+    Class used as a base for handling single Modifier types, like Race, Character Class, ItemType, Room Sector, etc.
+
+    This can be used as-is, but may need to be extended considerably depending on how elaborate your modifiers are.
     """
 
     def __init__(self, owner, attr_name, mod_category: str, default=0):
         """
-        Set up the FlagsHandler.
+        Set up the ModifiersHandler.
 
         Args:
-            owner (ObjectDB): The game object that'll have the flag.
-            attr_name: The attribute that'll be used to store the flag ID.
+            owner (ObjectDB): The game object that'll have the modifier.
+            attr_name: The attribute that'll be used to store the modifier ID.
             mod_category: The category index for MODIFIERS_NAMES[idx] and MODIFIERS_ID[idx]
         """
-        self.owner = owner
-        self.attr_name = attr_name
-        self.mod_category = mod_category
+        super().__init__(owner, attr_name, mod_category)
         self.modifier = None
         self.default = default
         self.load()
 
     def load(self):
         data = self.owner.attributes.get(self.attr_name, default=self.default)
-        if (found := MODIFIERS_ID[self.mod_category].get(data, None)):
-            self.modifier = found(self.owner)
+        if found := self._get_modifier(data):
+            self.modifier = found
 
-    def get(self) -> typing.Optional["Modifier"]:
+    def get(self) -> typing.Optional[Modifier]:
         return self.modifier
 
     def all(self):
-        if self.modifier:
-            return [self.modifier]
-        return []
+        return [self.modifier] if self.modifier else []
 
-    def set(self, flag: typing.Union[int, str, typing.Type["Modifier"]], strict: bool = False):
+    def set(self, modifier: typing.Union[int, str, typing.Type[Modifier]], strict: bool = False):
         """
-        Used to set a flag to owner. It will replace existing one.
+        Used to set a modifier to owner. It will replace existing one.
 
         Args:
-            flag (int or str): ID or name (case insensitive) of flag.
-            strict (bool): raise error if flag doesn't exist.
+            modifier (int or str): ID or name (case insensitive) of modifier.
+                Or the class instance.
+            strict (bool): raise error if modifier doesn't exist.
 
         Raises:
-            DatabaseError if flag does not exist.
+            DatabaseError if modifier does not exist.
         """
-        if hasattr(flag, "mod_id"):
-            self.modifier = flag(self.owner)
+        if found := self._get_modifier(modifier):
+            if self.modifier:
+                self.modifier.on_remove()
+                self.remove_modifier(self.modifier)
+                self.modifier = None
+            self.modifier = found
+            found.on_add()
             self.save()
+            self.add_modifier(found)
             return self.modifier
-
-        if isinstance(flag, int):
-            if (found := MODIFIERS_ID[self.mod_category].get(flag, None)):
-                self.modifier = found(self.owner)
-                self.save()
-                return self.modifier
-        if isinstance(flag, str):
-            if (fname := partial_match(flag, MODIFIERS_NAMES[self.mod_category].keys())):
-                found = MODIFIERS_NAMES[self.mod_category][fname]
-                self.modifier = found(self.owner)
-                self.save()
-                return self.modifier
         if strict:
-            raise DatabaseError(f"{self.mod_category} {flag} not found!")
+            raise DatabaseError(f"{self.mod_category} {modifier} not found!")
 
     def save(self):
         if self.modifier:
-            self.owner.attributes.add(self.attr_name, self.modifier.modifier_id)
+            self.owner.attributes.add(key=self.attr_name, value=self.modifier.modifier_id)
         else:
-            self.owner.attributes.remove(self.attr_name)
+            self.owner.attributes.remove(key=self.attr_name)
 
     def clear(self):
+        if self.modifier:
+            self.modifier.on_remove()
+            self.remove_modifier(self.modifier)
         self.modifier = None
         self.save()
 
 
-class FlagsHandler:
+class ModifiersHandler(_ModHandlerBase):
     """
-    Class used as a base for handling PlayerFlags, RoomFlags, MobFlags, and similar.
+    Class used as a base for handling multiple Modifier types, like Status Effects, Buffs, Perks, Flaws, etc.
 
     It is meant to be instantiated via @lazy_property on an ObjectDB typeclass.
-
-    These are objects loaded into advent.MODIFIERS_NAMES and MODIFIERS_ID.
     """
 
     def __init__(self, owner, attr_name: str, mod_category: str):
         """
-        Set up the FlagsHandler.
+        Set up the ModifiersHandler.
 
         Args:
-            owner (ObjectDB): The game object that'll have the flags.
-            attr_name: The attribute that'll be used to store the flag IDs.
+            owner (ObjectDB): The game object that'll have the modifiers.
+            attr_name: The attribute that'll be used to store the modifier IDs.
             mod_category: The category index for MODIFIERS_NAMES[idx] and MODIFIERS_ID[idx]
         """
-        self.owner = owner
-        self.attr_name = attr_name
-        self.mod_category = mod_category
+        super().__init__(owner, attr_name, mod_category)
         self.modifiers_names = dict()
         self.modifiers_ids = dict()
+        self.default = list()
         self.load()
 
     def load(self):
@@ -139,12 +229,12 @@ class FlagsHandler:
         Called by init. Retrieves IDs from attribute and references against the loaded
         modifiers.
         """
-        data = self.owner.attributes.get(self.attr_name, default=list())
-        found = [fo for f in data if (fo := MODIFIERS_ID[self.mod_category].get(f, None))]
-        for f in found:
-            m = f(self.owner)
-            self.modifiers_ids[m.modifier_id] = m
-            self.modifiers_names[str(m)] = m
+        data = self.owner.attributes.get(key=self.attr_name, default=self.default)
+        for f in data:
+            if found := self._get_modifier(f):
+                self.modifier_ids[found.modifier_id] = found
+                self.modifiers_names[str(found)] = found
+                self.add_modifier(found)
 
     def save(self):
         """
@@ -152,91 +242,94 @@ class FlagsHandler:
         """
         self.owner.attributes.add(self.attr_name, sorted(self.modifiers_ids.keys()))
 
-    def has(self, flag: typing.Union[int, str, typing.Type["Modifier"]]) -> bool:
+    def has(self, modifier: typing.Union[int, str, typing.Type[Modifier]]) -> bool:
         """
-        Called to determine if owner has this flag.
+        Called to determine if owner has this modifier.
 
         Args:
-            flag (int or str): ID or name (case insensitive) of flag.
+            modifier (int or str): ID or name (case insensitive) of modifier.
 
         Returns:
-            answer (bool): Whether owner has flag.
+            answer (bool): Whether owner has modifier.
         """
-        if hasattr(flag, "mod_id"):
-            flag = flag.mod_id
-        if isinstance(flag, int) and flag in self.modifiers_ids:
+        if hasattr(modifier, "modifier_id"):
+            return modifier.modifier_id in self.modifiers_ids
+        if isinstance(modifier, int) and modifier in self.modifiers_ids:
             return True
-        if isinstance(flag, str) and partial_match(flag, self.modifiers_names.keys(), exact=True):
+        if isinstance(modifier, str) and partial_match(modifier, self.modifiers_names.keys(), exact=True):
             return True
         return False
 
-    def all(self) -> typing.Iterable["Modifier"]:
+    def all(self, mod_tag: typing.Optional[str] = None) -> typing.Iterable[Modifier]:
         """
-        Get all Flags of this type on owner.
+        Get all Modifiers of this type on owner.
         Largely useful for iteration.
 
         Returns:
             List of modifiers.
         """
+        if mod_tag:
+            return self.get_modifiers(mod_tag)
         return list(self.modifiers_ids.values())
 
-    def add(self, flag: typing.Union[int, str, typing.Type["Modifier"]], strict=False):
+    def add(self, modifier: typing.Union[int, str, typing.Type[Modifier]], strict=False):
         """
-        Used to add a flag to owner.
+        Used to add a modifier to owner.
 
         Args:
-            flag (int or str): ID or name (case insensitive) of flag.
-            strict (bool): raise error if flag doesn't exist.
+            modifier (int or str): ID or name (case insensitive) of modifier.
+            strict (bool): raise error if modifier doesn't exist.
 
         Raises:
-            DatabaseError if flag does not exist.
+            DatabaseError if modifier does not exist.
         """
-        if hasattr(flag, "mod_id"):
-            m = flag(self.owner)
-            self.modifiers_ids[m.modifier_id] = m
-            self.modifiers_names[str(m)] = m
+        if found := self._get_modifier(modifier):
+            self.modifiers_ids[found.modifier_id] = found
+            self.modifiers_names[str(found)] = found
+            self.add_modifier(found)
+            found.on_add()
+            self.save()
+            return found
+        if strict:
+            raise DatabaseError(f"{self.mod_category} {modifier} not found!")
+
+    def find(self, modifier, strict=False):
+        """
+        Used to add a modifier to owner.
+
+        Args:
+            modifier (int or str): ID or name (case insensitive) of modifier.
+            strict (bool): raise error if modifier doesn't exist.
+
+        Raises:
+            DatabaseError if modifier does not exist.
+        """
+        if isinstance(modifier, int):
+            if (found := self.modifiers_ids.get(modifier, None)):
+                return found
+        if isinstance(modifier, str):
+            if (found := partial_match(modifier, self.modifiers_names.values(), exact=True)):
+                return found
+        if strict:
+            raise DatabaseError(f"{self.mod_category} {modifier} not found!")
+
+    def remove(self, modifier: typing.Union[int, str], strict=False):
+        """
+        Removes a modifier if owner has it.
+
+        Args:
+            modifier (int or str): ID or name (case insensitive) of modifier.
+            strict (bool): raise error if modifier doesn't exist.
+
+        Raises:
+            DatabaseError if modifier does not exist.
+        """
+        if found := self.find(modifier, strict=strict):
+            self.remove_modifier(found)
+            found.on_remove()
+            self.modifiers_ids.pop(found.modifier_id, None)
+            self.modifiers_names.pop(str(found), None)
             self.save()
             return
-
-        if isinstance(flag, int):
-            if (found := MODIFIERS_ID[self.mod_category].get(flag, None)):
-                m = found(self.owner)
-                self.modifiers_ids[m.modifier_id] = m
-                self.modifiers_names[str(m)] = m
-                self.save()
-                return
-        if isinstance(flag, str):
-            if (fname := partial_match(flag, MODIFIERS_NAMES[self.mod_category].keys())):
-                found = MODIFIERS_NAMES[self.mod_category][fname]
-                m = found(self.owner)
-                self.modifiers_ids[m.modifier_id] = m
-                self.modifiers_names[str(m)] = m
-                self.save()
-                return
         if strict:
-            raise DatabaseError(f"{self.mod_category} {flag} not found!")
-
-    def remove(self, flag: typing.Union[int, str], strict=False):
-        """
-        Removes a flag if owner has it.
-
-        Args:
-            flag (int or str): ID or name (case insensitive) of flag.
-            strict (bool): raise error if flag doesn't exist.
-
-        Raises:
-            DatabaseError if flag does not exist.
-        """
-        if isinstance(flag, int):
-            if (found := self.modifiers_ids.pop(flag, None)):
-                self.modifiers_names.pop(str(found))
-                self.save()
-                return
-        if isinstance(flag, str):
-            if (found := partial_match(flag, self.modifiers_ids.values(), exact=True)):
-                self.modifiers_ids.pop(found.mod_id, None)
-                self.modifiers_names.pop(str(found), None)
-                self.save()
-                return
-        if strict:
-            raise DatabaseError(f"{self.mod_category} {flag} not found!")
+            raise DatabaseError(f"{self.mod_category} {modifier} not found!")

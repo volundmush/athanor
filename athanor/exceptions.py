@@ -1,5 +1,3 @@
-
-
 class CommandError(Exception):
     pass
 

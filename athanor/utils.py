@@ -14,7 +14,6 @@ from rich.console import group
 from collections import defaultdict
 
 
-
 def read_json_file(p: Path):
     return orjson.loads(open(p, mode='rb').read())
 
@@ -44,8 +43,8 @@ def fresh_uuid4(existing) -> uuid:
     return fresh_uuid
 
 
-def partial_match(
-    match_text: str, candidates: typing.Iterable[typing.Any], key: callable = str, exact: bool = False, many_results=False) -> typing.Optional[typing.Any]:
+def partial_match(match_text: str, candidates: typing.Iterable[typing.Any], key: callable = str,
+        exact: bool = False, many_results: bool =False) -> typing.Optional[typing.Any]:
     """
     Given a list of candidates and a string to search for, does a case-insensitive partial name search against all
     candidates, preferring exact matches.
@@ -59,25 +58,24 @@ def partial_match(
     Returns:
         Any or None, or a list[Any]
     """
-    candidate_list = sorted(candidates, key=lambda item: len(key(item)))
     mlow = match_text.lower()
     out = list()
-    for candidate in candidate_list:
-        can_lower = key(candidate).lower()
+
+    candidates_sorted = sorted((key(c).lower(), c) for c in candidates)
+
+    for can_lower, candidate in candidates_sorted:
         if mlow == can_lower:
             if many_results:
                 out.append(candidate)
             else:
                 return candidate
-        if not exact:
-            if can_lower.startswith(mlow):
-                if many_results:
-                    out.append(candidate)
-                else:
-                    return candidate
-    if many_results:
-        return out
-    return None
+        elif not exact and can_lower.startswith(mlow):
+            if many_results:
+                out.append(candidate)
+            else:
+                return candidate
+    return out if many_results else None
+
 
 
 def generate_name(prefix: str, existing, gen_length: int = 20) -> str:
@@ -118,3 +116,6 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 
+class SafeDict(dict):
+    def __missing__(self, key):
+        return '{' + key + '}'

@@ -3,14 +3,10 @@ from collections import defaultdict
 MODIFIERS_NAMES = defaultdict(dict)
 MODIFIERS_ID = defaultdict(dict)
 
-PENDING_COMMANDS = set()
+CHARACTERS_ONLINE = set()
 
-SYSTEMS = dict()
+LOOPING_DEFERREDS = dict()
 
-DG_FUNCTIONS = defaultdict(dict)
+EFFECT_COMPONENTS = dict()
 
-DG_INSTANCE_CLASSES = dict()
-
-DG_VARS = dict()
-
-EQUIP_SLOTS = defaultdict(dict)
+EFFECT_CLASSES = dict()
