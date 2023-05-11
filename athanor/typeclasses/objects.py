@@ -174,6 +174,12 @@ class AthanorBase:
         if delivery:
             self.at_delivery(from_obj, mapping, )
 
+    def all_modifier_slots(self) -> dict[str, dict]:
+        """
+        Replace this method with one for this typeclasses's modifier slots.
+        """
+        return dict()
+
     def all_equip_slots(self) -> dict[str, dict]:
         """
         Replace this method with one for this typeclasses's equip slots.

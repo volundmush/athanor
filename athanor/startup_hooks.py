@@ -31,8 +31,8 @@ def at_server_init():
 
     for mod_path in settings.MODIFIER_PATHS:
         for k, v in callables_from_module(mod_path).items():
-            MODIFIERS_NAMES[v.category][v.get_name()] = v
-            MODIFIERS_ID[v.category][v.modifier_id] = v
+            MODIFIERS_NAMES[v.slot_type][v.get_name()] = v
+            MODIFIERS_ID[v.slot_type][v.modifier_id] = v
 
 
 def start_looping():

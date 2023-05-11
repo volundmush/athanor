@@ -155,7 +155,9 @@ class EquipHandler:
 
     def add_slot(self, key: str, **kwargs) -> typing.Tuple[bool, str]:
         """
-        Adds a new EquipSlot to the handler.
+        Adds a new persistent EquipSlot to the handler.
+
+        NOTE: I AM NOT REALLY SURE IF THIS IS A GOOD IDEA TO USE.
 
         Args:
             key (str): The key for the slot. It must be unique for this character.

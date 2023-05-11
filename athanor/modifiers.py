@@ -1,7 +1,6 @@
 import typing
-from collections import defaultdict
+import sys
 from athanor.utils import partial_match
-from athanor.exceptions import DatabaseError
 from athanor import MODIFIERS_ID, MODIFIERS_NAMES
 
 
@@ -36,41 +35,26 @@ class Modifier:
     # All modifiers have an ID attached to their class.
     modifier_id = -1
     # An actual modifier must replace this with a not-empty string!
-    category = ""
-    # A tuple of unique strings which will be used to index this modifier on the Handler. This describes the 'type'
-    # of modifier this is. For example, a buff might have the tags ('buff', 'stat', 'strength') That would allow you
-    # to retrieve 'all modifiers that are buffs', 'all modifiers that affect strength', or 'all modifiers that affect
-    # stats', as an example.
-    mod_tags: typing.Tuple[str] = tuple()
+    slot_type = ""
 
-    def __init__(self, owner, handler):
-        """
-        Args:
-            owner (AthanorObject): The object that this modifier is attached to.
-            handler: The handler that this modifier is attached to.
-        """
-        self.owner = owner
-        self.handler = handler
+    # A tuple of strings containing attribute names relevant to saving this modifier's current state.
+    # It's not necessary to store 'modifier_id', 'category', or slot.
+    persistent_attrs = ()
 
-    def attr_category(self) -> str:
+    def __init__(self, slot, **kwargs):
         """
-        Returns the category that this modifier should use for its persistent attributes.
+
         """
-        return f"modifiers:{self.category}:{self.modifier_id}"
-
-    def set_value(self, key: str, value):
-        self.owner.attributes.add(category=self.attr_category(), key=key, value=value)
-
-    def get_value(self, key: str, default=None):
-        return self.owner.attributes.get(category=self.attr_category(), key=key,
-                                         default=default)
+        self.slot = slot
+        self.handler = slot.handler
+        self.owner = self.handler.owner
 
     def on_remove(self, **kwargs):
         """
         This method is called when the modifier is removed from the handler. A buff expires, a status effect wears off,
         a transformation ends, etc.
         """
-        self.owner.attributes.remove(category=f"modifiers:{self.category}:{self.modifier_id}")
+        pass
 
     def on_add(self, **kwargs):
         """
@@ -79,17 +63,22 @@ class Modifier:
 
         It's useful for setting defaults, sending messages, etc.
         """
+        pass
+
+    def on_load(self, **kwargs):
+        """
+        This method is called when the modifier is loaded on a character init. Use this to set up defaults or
+        apply non-persistent Effects that the character should "always" have. This will probably look like a 'quieter'
+        version of on_add.
+        """
+        pass
 
     @classmethod
     def get_name(cls):
-        if hasattr(cls, "name"):
-            return cls.name
-        return cls.__name__
+        return getattr(cls, "name", cls.__name__)
 
     def __str__(self):
-        if hasattr(self.__class__, "name"):
-            return self.name
-        return self.__class__.__name__
+        return self.__class__.get_name()
 
     def __int__(self):
         return self.modifier_id
@@ -97,239 +86,122 @@ class Modifier:
     def __repr__(self):
         return f"<{self.__class__.__name__}: {int(self)}>"
 
+    def export(self) -> dict:
+        out = {"modifier_id": self.modifier_id}
+        for attr in self.persistent_attrs:
+            out[attr] = getattr(self, attr)
+        return out
 
-class _ModHandlerBase:
 
-    def __init__(self, owner, attr_name: str, mod_category: str):
+class ModifierSlot:
+
+    def __init__(self, handler, key: str, slot_type: str, modifier=None, **kwargs):
+        self.handler = handler
+        self.owner = handler.owner
+        self.key = sys.intern(key)
+        self.slot_type = sys.intern(slot_type)
+        self.modifier = modifier
+
+    def set_modifier(self, modifier, load=False, **kwargs):
+        if self.modifier:
+            self.remove_modifier()
+        self.modifier = modifier
+        if load:
+            self.modifier.on_load(**kwargs)
+        else:
+            self.modifier.on_add(**kwargs)
+            self.modifier.save()
+
+    def remove_modifier(self, **kwargs):
+        if self.modifier:
+            self.modifier.on_remove(**kwargs)
+            self.owner.attributes.remove(category=self.handler.attr_category, key=self.key)
+            self.modifier = None
+
+    def save(self):
+        if self.modifier:
+            self.owner.attributes.add(category=self.handler.attr_category, key=self.key, value=self.modifier.export())
+
+
+class ModifierHandler:
+    attr_category = "modifiers"
+    slot_class = ModifierSlot
+
+    def __init__(self, owner):
         self.owner = owner
-        self.attr_name = attr_name
-        self.mod_category = mod_category
-        self.mod_index = defaultdict(set)
+        self.slots = dict()
+        self.load()
 
-    def _get_modifier(self, mod) -> typing.Optional[Modifier]:
+    def load(self):
+        self.init_slots()
+        self.load_from_attribute()
+
+    def init_slots(self):
+        for k, v in self.owner.all_modifier_slots():
+            self.slots[k] = self.slot_class(self, k, **v)
+
+    def load_from_attribute(self):
+        to_clean = set()
+        for attr in self.owner.attributes.get(category=self.attr_category):
+            if not (slot := self.slots.get(attr.key, None)):
+                to_clean.add(attr.key)
+                continue
+            if "modifier_id" not in attr.value:
+                to_clean.add(attr.key)
+                continue
+            if not (modifier_class := self._get_modifier_class(slot.slot_type, attr.value["modifier_id"])):
+                to_clean.add(attr.key)
+                continue
+            slot.set_modifier(modifier_class(slot, **attr.value))
+
+        for key in to_clean:
+            self.owner.attributes.remove(category=self.attr_category, key=key)
+
+    def save(self, slot: str = None):
+        if slot and (found := self.slots.get(slot, None)):
+            found.save()
+        else:
+            for slot in self.slots.values():
+                slot.save()
+
+    def _get_modifier_class(self, slot_type: str, mod) -> typing.Optional[typing.Type[Modifier]]:
+        if slot_type not in MODIFIERS_NAMES:
+            return None
         if hasattr(mod, "modifier_id"):
-            return mod(self.owner, self)
+            return mod
         found = None
         if isinstance(mod, int):
-            found = MODIFIERS_ID[self.mod_category].get(mod, None)
+            found = MODIFIERS_ID[slot_type].get(mod, None)
         elif isinstance(mod, str):
-            fname = partial_match(mod, MODIFIERS_NAMES[self.mod_category].keys())
-            found = MODIFIERS_NAMES[self.mod_category].get(fname, None)
-        return found(self.owner, self) if found else None
+            fname = partial_match(mod, MODIFIERS_NAMES[slot_type].keys())
+            found = MODIFIERS_NAMES[slot_type].get(fname, None)
+        return found if found else None
 
-    def add_modifier(self, modifier: Modifier):
-        for stat in modifier.mod_tags:
-            self.mod_index[stat].add(modifier)
+    def add_modifier(self, slot: str, modifier: typing.Union[int, str], **kwargs) -> typing.Tuple[bool, str]:
+        if not (found := self.slots.get(slot, None)):
+            return False, f"Invalid slot: {slot}"
+        if not (modifier_class := self._get_modifier_class(found.slot_type, modifier)):
+            return False, f"Invalid modifier: {modifier}"
+        try:
+            modif = modifier_class(found, **kwargs)
+            found.set_modifier(modif, **kwargs)
+        except Exception as e:
+            return False, f"Error adding modifier: {e}"
+        return True, ""
 
-    def remove_modifier(self, modifier: Modifier):
-        for stat in modifier.mod_tags:
-            self.mod_index[stat].remove(modifier)
-            if not self.mod_index[stat]:
-                del self.mod_index[stat]
+    def remove_modifier(self, slot: str):
+        if not (found := self.slots.get(slot, None)):
+            return False, f"Invalid slot: {slot}"
+        if not found.modifier:
+            return False, f"No modifier in slot: {slot}"
+        found.remove_modifier()
+        return True, ""
 
-    def get_modifiers(self, stat_name: str):
-        return self.mod_index.get(stat_name, list())
+    def get_modifiers(self):
+        return [slot.modifier for slot in self.slots.values() if slot.modifier]
 
+    def active_slots(self):
+        return {key: slot.modifier for key, slot in self.slots.items() if slot.modifier}
 
-class ModifierHandler(_ModHandlerBase):
-    """
-    Class used as a base for handling single Modifier types, like Race, Character Class, ItemType, Room Sector, etc.
-
-    This can be used as-is, but may need to be extended considerably depending on how elaborate your modifiers are.
-    """
-
-    def __init__(self, owner, attr_name, mod_category: str, default=0):
-        """
-        Set up the ModifiersHandler.
-
-        Args:
-            owner (ObjectDB): The game object that'll have the modifier.
-            attr_name: The attribute that'll be used to store the modifier ID.
-            mod_category: The category index for MODIFIERS_NAMES[idx] and MODIFIERS_ID[idx]
-        """
-        super().__init__(owner, attr_name, mod_category)
-        self.modifier = None
-        self.default = default
-        self.load()
-
-    def load(self):
-        data = self.owner.attributes.get(self.attr_name, default=self.default)
-        if found := self._get_modifier(data):
-            self.modifier = found
-
-    def get(self) -> typing.Optional[Modifier]:
-        return self.modifier
-
-    def all(self):
-        return [self.modifier] if self.modifier else []
-
-    def set(self, modifier: typing.Union[int, str, typing.Type[Modifier]], strict: bool = False):
-        """
-        Used to set a modifier to owner. It will replace existing one.
-
-        Args:
-            modifier (int or str): ID or name (case insensitive) of modifier.
-                Or the class instance.
-            strict (bool): raise error if modifier doesn't exist.
-
-        Raises:
-            DatabaseError if modifier does not exist.
-        """
-        if found := self._get_modifier(modifier):
-            if self.modifier:
-                self.modifier.on_remove()
-                self.remove_modifier(self.modifier)
-                self.modifier = None
-            self.modifier = found
-            found.on_add()
-            self.save()
-            self.add_modifier(found)
-            return self.modifier
-        if strict:
-            raise DatabaseError(f"{self.mod_category} {modifier} not found!")
-
-    def save(self):
-        if self.modifier:
-            self.owner.attributes.add(key=self.attr_name, value=self.modifier.modifier_id)
-        else:
-            self.owner.attributes.remove(key=self.attr_name)
-
-    def clear(self):
-        if self.modifier:
-            self.modifier.on_remove()
-            self.remove_modifier(self.modifier)
-        self.modifier = None
-        self.save()
-
-
-class ModifiersHandler(_ModHandlerBase):
-    """
-    Class used as a base for handling multiple Modifier types, like Status Effects, Buffs, Perks, Flaws, etc.
-
-    It is meant to be instantiated via @lazy_property on an ObjectDB typeclass.
-    """
-
-    def __init__(self, owner, attr_name: str, mod_category: str):
-        """
-        Set up the ModifiersHandler.
-
-        Args:
-            owner (ObjectDB): The game object that'll have the modifiers.
-            attr_name: The attribute that'll be used to store the modifier IDs.
-            mod_category: The category index for MODIFIERS_NAMES[idx] and MODIFIERS_ID[idx]
-        """
-        super().__init__(owner, attr_name, mod_category)
-        self.modifiers_names = dict()
-        self.modifiers_ids = dict()
-        self.default = list()
-        self.load()
-
-    def load(self):
-        """
-        Called by init. Retrieves IDs from attribute and references against the loaded
-        modifiers.
-        """
-        data = self.owner.attributes.get(key=self.attr_name, default=self.default)
-        for f in data:
-            if found := self._get_modifier(f):
-                self.modifier_ids[found.modifier_id] = found
-                self.modifiers_names[str(found)] = found
-                self.add_modifier(found)
-
-    def save(self):
-        """
-        Serializes and sorts the Modifier IDs and saves to Attribute.
-        """
-        self.owner.attributes.add(self.attr_name, sorted(self.modifiers_ids.keys()))
-
-    def has(self, modifier: typing.Union[int, str, typing.Type[Modifier]]) -> bool:
-        """
-        Called to determine if owner has this modifier.
-
-        Args:
-            modifier (int or str): ID or name (case insensitive) of modifier.
-
-        Returns:
-            answer (bool): Whether owner has modifier.
-        """
-        if hasattr(modifier, "modifier_id"):
-            return modifier.modifier_id in self.modifiers_ids
-        if isinstance(modifier, int) and modifier in self.modifiers_ids:
-            return True
-        if isinstance(modifier, str) and partial_match(modifier, self.modifiers_names.keys(), exact=True):
-            return True
-        return False
-
-    def all(self, mod_tag: typing.Optional[str] = None) -> typing.Iterable[Modifier]:
-        """
-        Get all Modifiers of this type on owner.
-        Largely useful for iteration.
-
-        Returns:
-            List of modifiers.
-        """
-        if mod_tag:
-            return self.get_modifiers(mod_tag)
-        return list(self.modifiers_ids.values())
-
-    def add(self, modifier: typing.Union[int, str, typing.Type[Modifier]], strict=False):
-        """
-        Used to add a modifier to owner.
-
-        Args:
-            modifier (int or str): ID or name (case insensitive) of modifier.
-            strict (bool): raise error if modifier doesn't exist.
-
-        Raises:
-            DatabaseError if modifier does not exist.
-        """
-        if found := self._get_modifier(modifier):
-            self.modifiers_ids[found.modifier_id] = found
-            self.modifiers_names[str(found)] = found
-            self.add_modifier(found)
-            found.on_add()
-            self.save()
-            return found
-        if strict:
-            raise DatabaseError(f"{self.mod_category} {modifier} not found!")
-
-    def find(self, modifier, strict=False):
-        """
-        Used to add a modifier to owner.
-
-        Args:
-            modifier (int or str): ID or name (case insensitive) of modifier.
-            strict (bool): raise error if modifier doesn't exist.
-
-        Raises:
-            DatabaseError if modifier does not exist.
-        """
-        if isinstance(modifier, int):
-            if (found := self.modifiers_ids.get(modifier, None)):
-                return found
-        if isinstance(modifier, str):
-            if (found := partial_match(modifier, self.modifiers_names.values(), exact=True)):
-                return found
-        if strict:
-            raise DatabaseError(f"{self.mod_category} {modifier} not found!")
-
-    def remove(self, modifier: typing.Union[int, str], strict=False):
-        """
-        Removes a modifier if owner has it.
-
-        Args:
-            modifier (int or str): ID or name (case insensitive) of modifier.
-            strict (bool): raise error if modifier doesn't exist.
-
-        Raises:
-            DatabaseError if modifier does not exist.
-        """
-        if found := self.find(modifier, strict=strict):
-            self.remove_modifier(found)
-            found.on_remove()
-            self.modifiers_ids.pop(found.modifier_id, None)
-            self.modifiers_names.pop(str(found), None)
-            self.save()
-            return
-        if strict:
-            raise DatabaseError(f"{self.mod_category} {modifier} not found!")
+    def inactive_slots(self):
+        return {key: slot for key, slot in self.slots.items() if not slot.modifier}
