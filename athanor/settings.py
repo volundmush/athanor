@@ -1,7 +1,8 @@
 from evennia.settings_default import *
 
-# Although Athanor makes some changes, we use Multisession mode 3 as a base.
 MULTISESSION_MODE = 3
+AUTO_CREATE_CHARACTER_WITH_ACCOUNT = False
+AUTO_PUPPET_ON_LOGIN = False
 
 # Remove prefix stripping. We like our @ namespace.
 CMD_IGNORE_PREFIXES = ""
@@ -21,9 +22,6 @@ LOOPING_CALLS = {
 AT_SERVER_STARTSTOP_MODULE = [str(AT_SERVER_STARTSTOP_MODULE),
                               "athanor.startup_hooks"]
 
-
-SERVER_SESSION_CLASS = "athanor.serversession.AthanorServerSession"
-
 # A list of python modules which will be scanned to generate the
 # athanor.MODIFIERS_NAMES and athanor.MODIFIERS_ID dictionaries.
 # please see athanor/modifiers.py for more information.
@@ -39,18 +37,32 @@ ACTION_TEMPLATES = {
     "logout": '$You() $conj(have) left the game.'
 }
 
-BASE_CHARACTER_TYPECLASS = "athanor.characters.AthanorPlayerCharacter"
-BASE_NPC_TYPECLASS = "athanor.characters.AthanorNonPlayerCharacter"
-BASE_ITEM_TYPECLASS = "athanor.items.AthanorItem"
+BASE_CHARACTER_TYPECLASS = "athanor.typeclasses.characters.AthanorPlayerCharacter"
+BASE_NPC_TYPECLASS = "athanor.typeclasses.characters.AthanorNonPlayerCharacter"
+BASE_ITEM_TYPECLASS = "athanor.typeclasses.items.AthanorItem"
 BASE_OBJECT_TYPECLASS = BASE_ITEM_TYPECLASS
-BASE_ROOM_TYPECLASS = "athanor.rooms.AthanorRoom"
-BASE_EXIT_TYPECLASS = "athanor.exits.AthanorExit"
-BASE_GRID_TYPECLASS = "athanor.grids.AthanorGrid"
-BASE_SECTOR_TYPECLASS = "athanor.sectors.AthanorSector"
-BASE_STRUCTURE_TYPECLASS = "athanor.structures.AthanorStructure"
+BASE_ROOM_TYPECLASS = "athanor.typeclasses.rooms.AthanorRoom"
+BASE_EXIT_TYPECLASS = "athanor.typeclasses.exits.AthanorExit"
+BASE_GRID_TYPECLASS = "athanor.typeclasses.grids.AthanorGrid"
+BASE_SECTOR_TYPECLASS = "athanor.typeclasses.sectors.AthanorSector"
+BASE_STRUCTURE_TYPECLASS = "athanor.typeclasses.structures.AthanorStructure"
 
-BASE_SCRIPT_TYPECLASS = "athanor.scripts.AthanorScript"
+BASE_SCRIPT_TYPECLASS = "athanor.typeclasses.scripts.AthanorScript"
 
-BASE_ACCOUNT_TYPECLASS = "athanor.accounts.AthanorAccount"
+BASE_ACCOUNT_TYPECLASS = "athanor.typeclasses.accounts.AthanorAccount"
 
 BASE_EFFECT_CLASS = "athanor.effects.Effect"
+
+PORTAL_SESSION_HANDLER_CLASS = "athanor.portalsessions.AthanorPortalSessionHandler"
+SERVER_SESSION_HANDLER_CLASS = "athanor.serversession.AthanorServerSessionHandler"
+
+TELNET_PROTOCOL_CLASS = "athanor.portalsessions.PlainTelnet"
+SSL_PROTOCOL_CLASS = "athanor.portalsessions.SecureTelnet"
+SSH_PROTOCOL_CLASS = "athanor.portalsessions.SSHProtocol"
+WEBSOCKET_PROTOCOL_CLASS = "athanor.portalsessions.WebSocket"
+
+
+PROMPT_ENABLED = True
+PROMPT_DELAY = 0.1
+
+AUTOMAP_ENABLED = True

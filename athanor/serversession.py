@@ -1,83 +1,136 @@
 from rich.color import ColorSystem
+from django.conf import settings
+from evennia.server.sessionhandler import ServerSessionHandler, codecs_decode, _ERR_BAD_UTF8,\
+    _FUNCPARSER_PARSE_OUTGOING_MESSAGES_ENABLED, is_iter
 from evennia.server.serversession import ServerSession
-from evennia.utils.utils import lazy_property
-from evennia.utils.ansi import parse_ansi, ANSIString
-from evennia.utils.text2html import parse_html
+from evennia.utils.utils import lazy_property, logger
+
+_FUNCPARSER = None
 
 _ObjectDB = None
 _PlayTC = None
 _Select = None
 
 
-class AthanorServerSession(ServerSession):
-
-    @lazy_property
-    def console(self):
-        from athanor.mudrich import MudConsole
-        if "SCREENWIDTH" in self.protocol_flags:
-            width = self.protocol_flags["SCREENWIDTH"][0]
-        else:
-            width = 78
-        return MudConsole(color_system=self.rich_color_system(), width=width,
-                          file=self, record=True)
-
-    def rich_color_system(self):
-        if self.protocol_flags.get("NOCOLOR", False):
-            return None
-        if self.is_webclient():
-            return "truecolor"
-        if self.protocol_flags.get("TRUECOLOR", False):
-            return "256"
-        if self.protocol_flags.get("XTERM256", False):
-            return "256"
-        if self.protocol_flags.get("ANSI", False):
-            return "standard"
-        return None
-
-    def is_webclient(self):
-        return self.protocol_flags.get("CLIENTNAME", "").startswith("Evennia Webclient")
-
-    def update_rich(self):
-        if "SCREENWIDTH" in self.protocol_flags:
-            self.console._width = self.protocol_flags["SCREENWIDTH"][0]
-        else:
-            self.console._width = 80
-        if self.protocol_flags.get("NOCOLOR", False):
-            self.console._color_system = None
-        elif self.protocol_flags.get("XTERM256", False):
-            self.console._color_system = ColorSystem.EIGHT_BIT
-        elif self.protocol_flags.get("ANSI", False):
-            self.console._color_system = ColorSystem.STANDARD
-
-    def write(self, b: str):
+class AthanorServerSessionHandler(ServerSessionHandler):
+    def clean_senddata(self, session, kwargs):
         """
-        When self.console.print() is called, it writes output to here.
-        Not necessarily useful, but it ensures console print doesn't end up sent out stdout or etc.
+        Clean up data for sending across the AMP wire. Also apply the
+        FuncParser using callables from `settings.FUNCPARSER_OUTGOING_MESSAGES_MODULES`.
+
+        Args:
+            session (Session): The relevant session instance.
+            kwargs (dict) Each keyword represents a send-instruction, with the keyword itself being
+                the name of the instruction (like "text"). Suitable values for each keyword are:
+                - arg                ->  [[arg], {}]
+                - [args]             ->  [[args], {}]
+                - {kwargs}           ->  [[], {kwargs}]
+                - [args, {kwargs}]   ->  [[arg], {kwargs}]
+                - [[args], {kwargs}] ->  [[args], {kwargs}]
+
+        Returns:
+            kwargs (dict): A cleaned dictionary of cmdname:[[args],{kwargs}] pairs,
+            where the keys, args and kwargs have all been converted to
+            send-safe entities (strings or numbers), and funcparser parsing has been
+            applied.
+
         """
 
-    def flush(self):
-        """
-        Do not remove this method. It's needed to trick Console into treating this object
-        as a file.
-        """
+        global _FUNCPARSER
+        if not _FUNCPARSER:
+            from evennia.utils.funcparser import FuncParser
 
-    def fileno(self):
-        return -1
+            _FUNCPARSER = FuncParser(
+                settings.FUNCPARSER_OUTGOING_MESSAGES_MODULES, raise_errors=True
+            )
 
-    def print(self, text) -> str:
-        """
-        A thin wrapper around Rich.Console's print. Returns the exported data.
-        """
-        self.console.print(text, highlight=False)
-        return self.console.export_text(clear=True, styles=True)
+        options = kwargs.pop("options", None) or {}
+        raw = options.get("raw", False)
+        strip_inlinefunc = options.get("strip_inlinefunc", False)
 
-    def repr(self, text):
-        """
-        A thin wrapper around Rich.Console's print. Returns the exported data.
-        """
-        self.console.print(text)
-        return self.console.export_text(clear=True, styles=True)
+        def _utf8(data):
+            if isinstance(data, bytes):
+                try:
+                    data = codecs_decode(data, session.protocol_flags["ENCODING"])
+                except LookupError:
+                    # wrong encoding set on the session. Set it to a safe one
+                    session.protocol_flags["ENCODING"] = "utf-8"
+                    data = codecs_decode(data, "utf-8")
+                except UnicodeDecodeError:
+                    # incorrect unicode sequence
+                    session.sendLine(_ERR_BAD_UTF8)
+                    data = ""
 
-    def load_sync_data(self, sessdata):
-        super().load_sync_data(sessdata)
-        self.update_rich()
+            return data
+
+        def _validate(data):
+            """
+            Helper function to convert data to AMP-safe (picketable) values"
+
+            """
+            if hasattr(data, "__rich_console__"):
+                return data
+            elif isinstance(data, dict):
+                newdict = {}
+                for key, part in data.items():
+                    newdict[key] = _validate(part)
+                return newdict
+            elif is_iter(data):
+                return [_validate(part) for part in data]
+            elif isinstance(data, (str, bytes)):
+                data = _utf8(data)
+
+                if (
+                    _FUNCPARSER_PARSE_OUTGOING_MESSAGES_ENABLED
+                    and not raw
+                    and isinstance(self, ServerSessionHandler)
+                ):
+                    # only apply funcparser on the outgoing path (sessionhandler->)
+                    # data = parse_inlinefunc(data, strip=strip_inlinefunc, session=session)
+                    data = _FUNCPARSER.parse(data, strip=strip_inlinefunc, session=session)
+
+                return str(data)
+            elif (
+                hasattr(data, "id")
+                and hasattr(data, "db_date_created")
+                and hasattr(data, "__dbclass__")
+            ):
+                # convert database-object to their string representation.
+                return _validate(str(data))
+            else:
+                return data
+
+        rkwargs = {}
+        for key, data in kwargs.items():
+            key = _validate(key)
+            if not data:
+                if key == "text":
+                    # we don't allow sending text = None, this must mean
+                    # that the text command is not to be used.
+                    continue
+                rkwargs[key] = [[], {}]
+            elif isinstance(data, dict):
+                rkwargs[key] = [[], _validate(data)]
+            elif hasattr(data, "__rich_console__"):
+                rkwargs[key] = [[data, ], {}]
+            elif is_iter(data):
+                data = tuple(data)
+                if isinstance(data[-1], dict):
+                    if len(data) == 2:
+                        if is_iter(data[0]):
+                            rkwargs[key] = [_validate(data[0]), _validate(data[1])]
+                        else:
+                            rkwargs[key] = [[_validate(data[0])], _validate(data[1])]
+                    else:
+                        rkwargs[key] = [_validate(data[:-1]), _validate(data[-1])]
+                else:
+                    rkwargs[key] = [_validate(data), {}]
+            else:
+                rkwargs[key] = [[_validate(data)], {}]
+            rkwargs[key][1]["options"] = dict(options)
+        # make sure that any "prompt" message will be processed last
+        # by moving it to the end
+        if "prompt" in rkwargs:
+            prompt = rkwargs.pop("prompt")
+            rkwargs["prompt"] = prompt
+        return rkwargs

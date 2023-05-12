@@ -5,6 +5,7 @@ import html
 from dataclasses import dataclass
 import random
 import re
+import typing
 from marshal import loads, dumps
 
 from typing import Any, Dict, Iterable, List, Optional, Type, Union, Tuple
@@ -15,6 +16,8 @@ from rich.style import Style as OLD_STYLE
 from rich.text import Text as OLD_TEXT, Segment, Span
 from rich.console import Console as OLD_CONSOLE, ConsoleOptions as OLD_CONSOLE_OPTIONS, NoChange, NO_CHANGE
 from rich.console import JustifyMethod, OverflowMethod
+from rich.ansi import AnsiDecoder
+from evennia.utils.ansi import ANSIString, parse_ansi
 
 _RE_SQUISH = re.compile("\S+")
 _RE_NOTSPACE = re.compile("[^ ]+")
@@ -285,6 +288,8 @@ class MudConsole(OLD_CONSOLE):
             if clear:
                 del self._record_buffer[:]
         return text
+
+
 
     def _render_buffer(self, buffer: Iterable[Segment]) -> str:
         """Render buffered output, and clear buffer."""
@@ -606,11 +611,13 @@ class MudText(OLD_TEXT):
 DEFAULT_STYLES = dict()
 
 
-def AnsiStringConsole(self, console, options):
-    from rich.ansi import AnsiDecoder
-    from evennia.utils.ansi import parse_ansi
-    ev = parse_ansi(str(self), xterm256=True, mxp=True)
+def EvToRich(text: typing.Union[ANSIString, str]) -> MudText:
+    ev = parse_ansi(str(text), xterm256=True, mxp=True)
     return MudText("\n").join(AnsiDecoder().decode(ev))
+
+
+def AnsiStringConsole(self, console, options):
+    return EvToRich(self)
 
 
 class Stripper:

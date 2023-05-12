@@ -2,7 +2,7 @@ import typing
 import sys
 from athanor.utils import partial_match
 from athanor import MODIFIERS_ID, MODIFIERS_NAMES
-
+from collections import defaultdict
 
 class Modifier:
     """
@@ -121,6 +121,7 @@ class ModifierHandler:
     def __init__(self, owner):
         self.owner = owner
         self.slots = dict()
+        self.slots_index = defaultdict(set)
         self.load()
 
     def load(self):
@@ -129,7 +130,9 @@ class ModifierHandler:
 
     def init_slots(self):
         for k, v in self.owner.all_modifier_slots():
-            self.slots[k] = self.slot_class(self, k, **v)
+            mod_slot = self.slot_class(self, k, **v)
+            self.slots_index[mod_slot.slot_type].add(mod_slot)
+            self.slots[k] = mod_slot
 
     def load_from_attribute(self):
         to_clean = set()
@@ -188,11 +191,17 @@ class ModifierHandler:
         found.remove_modifier()
         return True, ""
 
-    def get_modifiers(self):
-        return [slot.modifier for slot in self.slots.values() if slot.modifier]
+    def get_modifiers(self, slot_type=None):
+        return [slot.modifier for slot in
+                (self.slots.values() if slot_type is None else self.slots_index.get(slot_type, set()))
+                if slot.modifier]
 
-    def active_slots(self):
-        return {key: slot.modifier for key, slot in self.slots.items() if slot.modifier}
+    def active_slots(self, slot_type=None):
+        if slot_type:
+            return {key: slot for key, slot in self.slots.items() if slot.modifier and slot.slot_type == slot_type}
+        return {key: slot for key, slot in self.slots.items() if slot.modifier}
 
-    def inactive_slots(self):
+    def inactive_slots(self, slot_type=None):
+        if slot_type:
+            return {key: slot for key, slot in self.slots.items() if not slot.modifier and slot.slot_type == slot_type}
         return {key: slot for key, slot in self.slots.items() if not slot.modifier}
