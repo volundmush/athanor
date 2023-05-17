@@ -1,3 +1,4 @@
+import typing
 from athanor import STAT_CLASSES
 
 
@@ -110,22 +111,23 @@ class StatHandler:
     "character", "item", "room", "spaceship".
     """
 
-    __slots__ = ("owner", "stats", "stat_category")
+    __slots__ = ("owner", "stats", "stat_categories")
 
-    def __init__(self, owner, stat_category: str):
+    def __init__(self, owner, stat_categories: typing.Iterable[str]):
         self.owner = owner
-        self.stat_category = stat_category
+        self.stat_categories = stat_categories
         self.stats = dict()
         self.load()
 
     def load(self):
-        for stat in STAT_CLASSES.get(self.stat_category, list()):
-            self.stats[stat.get_key()] = stat(self)
+        for category in self.stat_categories:
+            for stat in STAT_CLASSES.get(category, list()):
+                self.stats[stat.get_key()] = stat(self)
         for k, v in self.stats.items():
             v.load()
 
     def save_category(self):
-        return f"{self.stat_category}_stats"
+        return f"stats"
 
     def get_base(self, stat: str) -> float:
         """

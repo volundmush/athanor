@@ -11,6 +11,7 @@ from evennia.objects.objects import _MSG_CONTENTS_PARSER
 from athanor.equip import EquipHandler
 from athanor.traits import TraitHandler
 from athanor.prompt import PromptHandler
+from athanor.stats import StatHandler
 
 
 class AthanorBase:
@@ -322,3 +323,7 @@ class AthanorBase:
         if looker and self.locks.check_lockstring(looker, "perm(Builder)"):
             return f"{name}(#{self.id})"
         return name
+
+    @lazy_property
+    def stats(self):
+        return StatHandler(self, self._content_types)

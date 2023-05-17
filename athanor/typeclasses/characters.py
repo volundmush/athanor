@@ -44,6 +44,8 @@ class AthanorPlayerCharacter(_AthanorCharacter):
     """
     is_player = True
 
+    _content_types = ("character", "player")
+
     def at_object_creation(self):
         super().at_object_creation()
         self.db.total_playtime = 0
@@ -190,3 +192,4 @@ class AthanorNonPlayerCharacter(_AthanorCharacter):
     The base for all non-player characters.
     """
     is_player = False
+    _content_types = ("character", "npc")

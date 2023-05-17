@@ -29,7 +29,7 @@ def at_server_init():
     from evennia.objects.manager import ObjectDBManager
     ObjectDBManager.get_objs_with_key_or_alias = get_objs_with_key_or_alias
 
-    from evennia.utils.utils import callables_from_module, class_from_module
+    from evennia.utils.utils import callables_from_module
     from django.conf import settings
 
     from athanor import TRAIT_CLASSES

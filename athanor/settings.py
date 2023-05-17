@@ -23,9 +23,15 @@ AT_SERVER_STARTSTOP_MODULE = [str(AT_SERVER_STARTSTOP_MODULE),
                               "athanor.startup_hooks"]
 
 # A list of python modules which will be scanned to generate the
-# athanor.TRAITS_NAMES and athanor.TRAITS_ID dictionaries.
+# athanor.TRAIT_CLASSES dictionaries.
 # please see athanor/traits.py for more information.
-TRAIT_PATHS = []
+TRAIT_CLASS_PATHS = []
+
+STAT_CLASS_PATHS = []
+
+EFFECT_COMPONENT_CLASS_PATHS = ["athanor.effect_components"]
+EFFECT_CLASS_PATHS = []
+
 
 ACTION_TEMPLATES = {
     "say": '$You() $conj(say), "{text}"',
