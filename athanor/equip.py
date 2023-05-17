@@ -13,7 +13,10 @@ class EquipSlot:
 
     # The attributes which should be saved to the attribute-dict for this equip slot, if it's persistent.
     # There's no need for this to contain 'key', 'persistent' or 'item'.
-    persistent_attrs = ["slot_type", "sort_order", "wear_verb", "wear_display", "remove_verb", "remove_display"]
+    persistent_attrs = ("slot_type", "sort_order", "wear_verb", "wear_display", "remove_verb", "remove_display")
+
+    __slots__ = ("handler", "owner", "key", "item", "slot_type", "sort_order", "wear_verb", "wear_display",
+                 "remove_verb", "remove_display", "list_display", "persistent")
 
     def __init__(self, handler, key: str, slot_type: str, list_display: str, sort_order: int = 0,
                  wear_verb: str = "$conj(wears)", wear_display: str = "on $pron(your) body",
@@ -114,6 +117,8 @@ class EquipHandler:
     attr_category = "equip_slots"
     item_attr = "equip_slot"
     equip_class = EquipSlot
+
+    __slots__ = ("owner", "slots")
 
     def __init__(self, owner):
         self.owner = owner

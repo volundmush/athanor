@@ -1,12 +1,11 @@
 from collections import defaultdict
 
-MODIFIERS_NAMES = defaultdict(dict)
-MODIFIERS_ID = defaultdict(dict)
+TRAIT_CLASSES = defaultdict(dict)
+STAT_CLASSES = defaultdict(dict)
 
 CHARACTERS_ONLINE = set()
 
 LOOPING_DEFERREDS = dict()
 
-EFFECT_COMPONENTS = dict()
-
+EFFECT_COMPONENT_CLASSES = dict()
 EFFECT_CLASSES = dict()

@@ -1,7 +1,7 @@
 import typing
 import sys
 from collections import defaultdict
-from athanor import EFFECT_COMPONENTS, EFFECT_CLASSES
+from athanor import EFFECT_COMPONENT_CLASSES, EFFECT_CLASSES
 
 
 class EffectComponent:
@@ -35,8 +35,10 @@ class EffectComponent:
     If these values can be repeatedly reproduced from something like an Item, then the entire Effect won't need
     to be Persistent. It also means that the Effect will be refreshed if the item's prototype changes.
     """
-    # The attributes which should be saved to the attribute-dict for this effectcomponent, if the Effect is persistent.
-    persistent_attrs = ["tags"]
+    # The attributes which should be saved to the attribute-dict for this EffectComponent, if the Effect is persistent.
+    persistent_attrs = ("tags",)
+
+    __slots__ = ("effect", "tags")
 
     def __init__(self, effect, tags: typing.Tuple[str] = None, **kwargs):
         """
@@ -52,23 +54,33 @@ class EffectComponent:
         # The Effect this component is attached to.
         self.effect = effect
 
-        # The handler this component is attached to.
-        self.handler = effect.handler
-
-        # The object this affect ultimately applies to.
-        self.owner = effect.handler.owner
-
         self.tags = tags
 
+    @classmethod
+    def get_key(cls):
+        """
+        The EffectComponent's save key, used to identify it in the database.
+
+        It need not be its display name. It should be a short string that is unique to
+        this EffectComponent.
+
+        By default, that's the class name, but a class property is good for overriding.
+        """
+        return getattr(cls, "key", cls.__name__)
+
+    @property
+    def handler(self):
+        return self.effect.handler
+
+    @property
+    def owner(self):
+        return self.handler.owner
+
     def is_enabled(self) -> bool:
-        return True
+        return self.effect.is_enabled()
 
     def generate_description(self) -> str:
         return ""
-
-    @classmethod
-    def get_name(cls):
-        return getattr(cls, "name", cls.__name__)
 
     def export(self) -> typing.Tuple[str, dict]:
         """
@@ -77,7 +89,13 @@ class EffectComponent:
         out = dict()
         for attr in self.persistent_attrs:
             out[attr] = getattr(self, attr)
-        return self.get_name(), out
+        return self.get_key(), out
+
+    def on_enable(self):
+        pass
+
+    def on_disable(self):
+        pass
 
 
 class Effect:
@@ -101,10 +119,13 @@ class Effect:
     their source material changes.
     """
     # The attributes which should be saved to the attribute-dict for this Effect, if it's Persistent.
-    persistent_attrs = ["tags", "description", "source"]
+    persistent_attrs = ("description", "source", "enabled")
+
+    __slots__ = ("handler", "name", "source", "components", "persistent", "components_type_map",
+                 "components_tag_map", "description", "enabled")
 
     def __init__(self, handler, name: typing.Union[str, "AthanorItem"], source=None,
-                 description: typing.Optional[str] = None, persistent: bool = False, **kwargs):
+                 description: typing.Optional[str] = None, persistent: bool = False, enabled: bool = True, **kwargs):
         """
         Creates an Effect.
 
@@ -116,7 +137,6 @@ class Effect:
 
         """
         self.handler = handler
-        self.owner = handler.owner
         self.name = name
         self.source = source
         self.components = list()
@@ -134,6 +154,11 @@ class Effect:
 
         self.components_tag_map = defaultdict(set)
         self.description = sys.intern(description) if description else None
+        self.enabled = enabled
+
+    @property
+    def owner(self):
+        return self.handler.owner
 
     def load(self, component_data: list):
         """
@@ -141,7 +166,7 @@ class Effect:
         It's a list, because the same EffectComponent class might be used multiple times.
         """
         for key, data in component_data:
-            component_class = EFFECT_COMPONENTS.get(key, None)
+            component_class = EFFECT_COMPONENT_CLASSES.get(key, None)
             if not component_class:
                 continue  # TODO: this should probably error somehow... but how to do so usefully?
             try:
@@ -185,6 +210,60 @@ class Effect:
 
         return self.name, out
 
+    def is_enabled(self) -> bool:
+        return True
+
+    def on_enable(self):
+        for component in self.components:
+            component.on_enable()
+
+    def on_disable(self):
+        for component in self.components:
+            component.on_disable()
+
+    def on_add(self):
+        self.on_enable()
+
+    def on_remove(self):
+        self.on_disable()
+
+    def calculate_dynamic(self, modifier: str) -> float:
+        return 0.0
+
+
+class Modifier:
+    """
+    Each Modifier represents a mutable value, identified by a short unique string (like strength_bonus) which is meant
+    to be referenced by other systems, like the Stat system or a hypothetical Skill system. It might even be used for
+    the combat system, representing the current bonus damage applied to this character's fire or lightning attacks.
+
+    It is part of the Effect system; the basic EffectComponents relevant to Modifiers should, upon being enabled,
+    register themselves with one or more Modifiers. Static values ought to be applied directly to the modifier's value,
+    while dynamic values (such as randomized bonuses - IE, +[20-30]% fire damage) should be easily accessed through a
+    list that can be iterated and the calculations performed.
+
+    Modifiers are not serialized. They operate more like a cache or index of the currently enabled Effects relevant
+    to stats and bonuses, and are regenerated each time the ObjectDB is loaded.
+    """
+
+    __slots__ = ("handler", "key", "dynamic", "value")
+
+    def __init__(self, handler, key: str):
+        self.handler = handler
+        self.key = key
+        self.value = 0.0
+        self.dynamic = set()
+
+    @property
+    def owner(self):
+        return self.handler.owner
+
+    def set(self, value: float):
+        self.value = value
+
+    def modify(self, value: float):
+        self.set(self.value + value)
+
 
 class EffectHandler:
     """
@@ -192,6 +271,9 @@ class EffectHandler:
     """
     attr_save = "effects"
     base_effect_class = Effect
+    base_modifier_class = Modifier
+
+    __slots__ = ("owner", "effects", "component_tags", "component_types", "modifiers")
 
     def __init__(self, owner):
         self.owner = owner
@@ -200,11 +282,11 @@ class EffectHandler:
         self.effects = dict()
         self.component_tags = defaultdict(set)
         self.component_types = defaultdict(set)
-
+        self.modifiers = dict()
         self.load()
 
     def add_effect(self, name: typing.Union[str, "AthanorItem"], effect_class: typing.Union[str, typing.Type[Effect]] = None, source=None,
-                   component_data: list = None, description: str = None, persistent: bool = False, **kwargs):
+                   component_data: list = None, description: str = None, persistent: bool = False, loading: bool = False, **kwargs):
         """
         A reminder: All Effects MUST have a unique name. There's no practical way to check for that here, so it's
         on the developers.
@@ -223,9 +305,14 @@ class EffectHandler:
             self.component_tags[tag] += effect.components_tag_map[tag]
         if persistent:
             self.save()
+        if loading:
+            effect.on_load()
+        else:
+            effect.on_add()
 
     def remove_effect(self, name: typing.Union[str, "AthanorItem"]):
         if eff := self.effects.get(name, None):
+            eff.on_remove()
             for comp_type in eff.components_type_map:
                 self.component_types[comp_type] -= eff.components_type_map[comp_type]
             for tag in eff.components_tag_map:
@@ -260,4 +347,14 @@ class EffectHandler:
         Loads the EffectHandler's Persistent Effects from the owner's attributes.
         """
         for name, data in self.owner.attributes.get(self.attr_save, list()):
-            self.add_effect(name=name, persistent=True, **data)
+            self.add_effect(name=name, persistent=True, loading=True, **data)
+
+    def get_modifier(self, modifier: str) -> Modifier:
+        """
+        Returns the Modifier object for the given modifier key.
+        One will be created if it doesn't exist.
+        """
+        if not (found := self.modifiers.get(modifier, None)):
+            found = self.base_modifier_class(self, modifier)
+            self.modifiers[modifier] = found
+        return found

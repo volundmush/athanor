@@ -5,11 +5,11 @@ from typing import Optional, List
 from evennia.utils import logger, make_iter, to_str
 from evennia.utils.ansi import strip_ansi, ANSIString
 from evennia.utils.utils import lazy_property
-from athanor.utils import SafeDict
+from athanor.utils import SafeDict, partial_match
 from athanor.mudrich import MudText
 from evennia.objects.objects import _MSG_CONTENTS_PARSER
 from athanor.equip import EquipHandler
-from athanor.modifiers import ModifierHandler
+from athanor.traits import TraitHandler
 from athanor.prompt import PromptHandler
 
 
@@ -23,8 +23,8 @@ class AthanorBase:
         return EquipHandler(self)
 
     @lazy_property
-    def modifiers(self):
-        return ModifierHandler(self)
+    def traits(self):
+        return TraitHandler(self)
 
     def get_type_family(self) -> str:
         """
@@ -158,9 +158,9 @@ class AthanorBase:
         if delivery:
             self.at_delivery(from_obj, mapping, )
 
-    def all_modifier_slots(self) -> dict[str, dict]:
+    def all_trait_slots(self) -> dict[str, dict]:
         """
-        Replace this method with one for this typeclasses's modifier slots.
+        Replace this method with one for this typeclasses's trait slots.
         """
         return dict()
 
@@ -190,12 +190,6 @@ class AthanorBase:
         """
         return [item for item in self.contents_get(content_type="item") if item.db.equip_slot is None]
 
-    def get_equipment(self) -> typing.Dict[str, "AthanorItem"]:
-        """
-        Returns a list of all items equipped by the character.
-        """
-        return self.equip.occupied()
-
     def init_effects(self):
         """
         Initializes the character's effects.
@@ -204,18 +198,6 @@ class AthanorBase:
         and add them to the character's non-persistent effects as appropriate.
         """
         pass
-
-    def test_rich(self):
-        from athanor.mudrich import MudText
-        from rich.style import Style
-        from rich.console import Group
-
-        group = Group(
-            MudText("Hello, world!", style=Style(color="red", bold=True)),
-            MudText("Hello, world!", style=Style(color="blue", bold=True)),
-        )
-
-        self.msg(text=(group,))
 
     def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
         """
@@ -283,7 +265,7 @@ class AthanorBase:
                 if highlight:
                     t = MudText(t)
             kwargs["text"] = t if extra is None else (t, extra)
-            if settings.PROMPT_ENABLED:
+            if settings.PROMPT_ENABLED and not kwargs.pop("noprompt", False):
                 self.prompt.prepare(prompt_delay=settings.PROMPT_DELAY)
 
         # relay to session(s)
@@ -300,3 +282,43 @@ class AthanorBase:
         Render the prompt for this Object.
         """
         pass
+
+    def generate_keywords(self, looker, **kwargs) -> typing.Set[str]:
+        """
+        This should return a set of keywords that can be used to search for this object.
+
+        The object searching for it is included to handle dynamic generation of keywords
+        based on perspective.
+        """
+        results = set()
+
+        for alias in self.aliases.all():
+            for word in alias.split():
+                results.add(word.lower())
+        for word in self.key.split():
+            results.add(word.lower())
+        return results
+
+    def check_search_match(self, looker, ostring: str, exact: bool, **kwargs):
+        keywords = self.generate_keywords(looker, **kwargs)
+        if exact:
+            return ostring.lower() in keywords
+        return bool(partial_match(ostring, keywords))
+
+    def search(self, *args, **kwargs):
+        self.objects.looker = self
+        results = super().search(*args, **kwargs)
+        del self.objects.looker
+        return results
+
+    def get_display_name(self, looker=None, **kwargs) -> str:
+        """
+        Returns the name of the object to looker.
+
+        Args:
+            looker (Object, optional): The object looking at this object.
+        """
+        name = self.attributes.get(key="short_description", default=self.key)
+        if looker and self.locks.check_lockstring(looker, "perm(Builder)"):
+            return f"{name}(#{self.id})"
+        return name

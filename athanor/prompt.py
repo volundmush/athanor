@@ -14,7 +14,7 @@ class PromptHandler:
         self.task.addErrback(self.error)
 
     def print(self):
-        self.owner.msg(prompt=f"\n{self.owner.render_prompt()}\n")
+        self.owner.msg(prompt=f"\n{self.owner.render_prompt()}\n", noprompt=True)
 
     def error(self, err):
         pass

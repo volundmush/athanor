@@ -23,9 +23,9 @@ AT_SERVER_STARTSTOP_MODULE = [str(AT_SERVER_STARTSTOP_MODULE),
                               "athanor.startup_hooks"]
 
 # A list of python modules which will be scanned to generate the
-# athanor.MODIFIERS_NAMES and athanor.MODIFIERS_ID dictionaries.
-# please see athanor/modifiers.py for more information.
-MODIFIER_PATHS = []
+# athanor.TRAITS_NAMES and athanor.TRAITS_ID dictionaries.
+# please see athanor/traits.py for more information.
+TRAIT_PATHS = []
 
 ACTION_TEMPLATES = {
     "say": '$You() $conj(say), "{text}"',
@@ -66,3 +66,6 @@ PROMPT_ENABLED = True
 PROMPT_DELAY = 0.1
 
 AUTOMAP_ENABLED = True
+
+
+DUB_SYSTEM_ENABLED = False

@@ -229,7 +229,7 @@ class SSHProtocol(SshProtocol, PortalSessionMixin):
         screenreader = options.get("screenreader", flags.get("SCREENREADER", False))
         highlight = options.get("highlight", False)
 
-        rendered = text if raw else self.print(text, styles=not raw, highlight=True)
+        rendered = text if raw else self.print(text, styles=not raw, highlight=highlight)
 
         if screenreader:
             # screenreader mode cleans up output

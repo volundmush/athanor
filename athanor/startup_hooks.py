@@ -25,14 +25,39 @@ def at_server_init():
     from mudrich import install_mudrich
     install_mudrich()
 
+    from athanor.search import get_objs_with_key_or_alias
+    from evennia.objects.manager import ObjectDBManager
+    ObjectDBManager.get_objs_with_key_or_alias = get_objs_with_key_or_alias
+
     from evennia.utils.utils import callables_from_module, class_from_module
     from django.conf import settings
-    from athanor import MODIFIERS_ID, MODIFIERS_NAMES
 
-    for mod_path in settings.MODIFIER_PATHS:
+    from athanor import TRAIT_CLASSES
+    for mod_path in settings.TRAIT_CLASS_PATHS:
         for k, v in callables_from_module(mod_path).items():
-            MODIFIERS_NAMES[v.slot_type][v.get_name()] = v
-            MODIFIERS_ID[v.slot_type][v.modifier_id] = v
+            if not hasattr(v, "slot_type"):
+                continue
+            TRAIT_CLASSES[v.slot_type][v.get_name()] = v
+
+    from athanor import STAT_CLASSES
+    for mod_path in settings.STAT_CLASS_PATHS:
+        for k, v in callables_from_module(mod_path).items():
+            if not getattr(v, "category", None):
+                continue
+            STAT_CLASSES[v.category][v.key()] = v
+
+    from athanor import EFFECT_COMPONENT_CLASSES, EFFECT_CLASSES
+    for mod_path in settings.EFFECT_COMPONENT_CLASS_PATHS:
+        for k, v in callables_from_module(mod_path).items():
+            if not hasattr(v, "get_key"):
+                continue
+            EFFECT_COMPONENT_CLASSES[v.get_key()] = v
+
+    for mod_path in settings.EFFECT_CLASS_PATHS:
+        for k, v in callables_from_module(mod_path).items():
+            if not hasattr(v, "get_class_name"):
+                continue
+            EFFECT_CLASSES[v.get_class_name()] = v
 
 
 def start_looping():
@@ -94,7 +119,7 @@ def at_server_cold_start():
     # Cleanup all AthanorPlayerCharacters that are online...
     # but can't be, because we crashed. This should put them all
     # into storage and update all time trackers.
-    from athanor.typeclasses.objects import AthanorPlayerCharacter
+    from athanor.typeclasses.characters import AthanorPlayerCharacter
     for obj in AthanorPlayerCharacter.objects.filter_family():
         if obj.db.is_online:
             obj.at_post_unpuppet(last_logout=obj.db.last_online, shutdown=True)
