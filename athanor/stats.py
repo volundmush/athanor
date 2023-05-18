@@ -101,6 +101,17 @@ class Stat:
             self.cache = self.calculate()
         return self.cache
 
+    def calculate_modifier(self, modifier: str) -> float:
+        """
+        Helper method which calculates the value of a modifier, calling all dynamics.
+        """
+        if not (modifier := self.owner.effects.modifiers.get(modifier, None)):
+            return 0.0
+        total = modifier.value
+        for dynamic in modifier.dynamics:
+            total += dynamic.on_calculate()
+        return total
+
 
 class StatHandler:
     """

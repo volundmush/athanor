@@ -9,6 +9,7 @@ from evennia.utils.ansi import ANSIString
 from django.conf import settings
 from rich.style import NULL_STYLE
 
+
 class AthanorRoom(DefaultRoom, AthanorBase):
     """
     Not much different from Evennia DefaultRooms.
@@ -145,7 +146,7 @@ class AthanorRoom(DefaultRoom, AthanorBase):
         table.add_column("Map Key", width=37, header_style=NULL_STYLE)
         table.add_row(EvToRich("|r---------"), EvToRich("|r----------"),
                       EvToRich("|r-----------------------------"))
-        table.add_row(self.generate_compass(looker), col_automap, EvToRich(", ".join(map_legend)))
+        table.add_row(EvToRich(self.generate_compass(looker)), col_automap, EvToRich(", ".join(map_legend)))
         yield table
 
     @group()
@@ -190,3 +191,6 @@ class AthanorRoom(DefaultRoom, AthanorBase):
         if (thing_obj := contents_map.get("things", None)):
             things = ANSIString("\n").join([gen_name(obj) for obj in thing_obj])
             yield EvToRich(things)
+
+    def get_display_name(self, looker=None, **kwargs):
+        return self.attributes.get(key="short_description", default=self.key)

@@ -27,6 +27,7 @@ def at_server_init():
 
     from athanor.search import get_objs_with_key_or_alias
     from evennia.objects.manager import ObjectDBManager
+    ObjectDBManager.old_get_objs_with_key_or_alias = ObjectDBManager.get_objs_with_key_or_alias
     ObjectDBManager.get_objs_with_key_or_alias = get_objs_with_key_or_alias
 
     from evennia.utils.utils import callables_from_module
@@ -120,7 +121,7 @@ def at_server_cold_start():
     # but can't be, because we crashed. This should put them all
     # into storage and update all time trackers.
     from athanor.typeclasses.characters import AthanorPlayerCharacter
-    for obj in AthanorPlayerCharacter.objects.filter_family():
+    for obj in AthanorPlayerCharacter.objects.get_by_tag(key="puppeted", category="account"):
         if obj.db.is_online:
             obj.at_post_unpuppet(last_logout=obj.db.last_online, shutdown=True)
 
@@ -130,6 +131,4 @@ def at_server_cold_stop():
     This is called only when the server goes down due to a shutdown or
     reset.
     """
-    from athanor import CHARACTERS_ONLINE
-    for obj in set(CHARACTERS_ONLINE):
-        obj.at_post_unpuppet(shutdown=True)
+    pass

@@ -6,7 +6,7 @@ from athanor import CHARACTERS_ONLINE
 from athanor.utils import utcnow
 
 
-class _AthanorCharacter(DefaultCharacter, AthanorBase):
+class AthanorCharacter(DefaultCharacter, AthanorBase):
     """
     Abstract base class for Athanor characters.
     Do not instantiate directly.
@@ -35,7 +35,7 @@ class _AthanorCharacter(DefaultCharacter, AthanorBase):
         obj.db.coordinates = 0
 
 
-class AthanorPlayerCharacter(_AthanorCharacter):
+class AthanorPlayerCharacter(AthanorCharacter):
     """
     This is the base for all Player Characters.
 
@@ -187,7 +187,7 @@ class AthanorPlayerCharacter(_AthanorCharacter):
         return results
 
 
-class AthanorNonPlayerCharacter(_AthanorCharacter):
+class AthanorNonPlayerCharacter(AthanorCharacter):
     """
     The base for all non-player characters.
     """
