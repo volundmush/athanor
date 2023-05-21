@@ -105,8 +105,6 @@ class AthanorPlayerCharacter(AthanorCharacter):
 
     def at_post_unpuppet(self, account=None, session=None, **kwargs):
         if not self.sessions.count() or kwargs.get("shutdown", False):
-            self.db.is_online = False
-            CHARACTERS_ONLINE.remove(self)
             # Pulls from kwargs in case this is called by at_server_cold_boot
             self.db.last_logout = kwargs.get("last_logout", utcnow())
             tdelta = self.db.last_logout - self.db.last_login

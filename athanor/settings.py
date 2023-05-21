@@ -23,9 +23,13 @@ AT_SERVER_STARTSTOP_MODULE = [str(AT_SERVER_STARTSTOP_MODULE),
                               "athanor.startup_hooks"]
 
 # A list of python modules which will be scanned to generate the
-# athanor.TRAIT_CLASSES dictionaries.
+# athanor.ASPECT_CLASSES dictionaries.
 # please see athanor/traits.py for more information.
-TRAIT_CLASS_PATHS = []
+ASPECT_SLOT_CLASS_PATHS = []
+ASPECT_CLASS_PATHS = []
+
+QUIRK_SLOT_CLASS_PATHS = []
+QUIRK_CLASS_PATHS = []
 
 STAT_CLASS_PATHS = []
 

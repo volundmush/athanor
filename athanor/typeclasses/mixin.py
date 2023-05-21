@@ -9,7 +9,8 @@ from athanor.utils import SafeDict, partial_match
 from athanor.mudrich import MudText
 from evennia.objects.objects import _MSG_CONTENTS_PARSER
 from athanor.equip import EquipHandler
-from athanor.traits import TraitHandler
+from athanor.aspects import AspectHandler
+from athanor.quirks import QuirkHandler
 from athanor.prompt import PromptHandler
 from athanor.stats import StatHandler
 
@@ -24,8 +25,12 @@ class AthanorBase:
         return EquipHandler(self)
 
     @lazy_property
-    def traits(self):
-        return TraitHandler(self)
+    def aspects(self):
+        return AspectHandler(self)
+
+    @lazy_property
+    def quirks(self):
+        return QuirkHandler(self)
 
     def get_type_family(self) -> str:
         """
@@ -53,10 +58,10 @@ class AthanorBase:
         text = strip_ansi(text)
         first_quote = text.find('"')
         speech = text[first_quote + 1:-1]
-        pass # self.dgscripts.trigger_speech(speech, from_obj, **kwargs)
+        pass  # self.dgscripts.trigger_speech(speech, from_obj, **kwargs)
 
     def at_see(self, text, from_obj, msg_type, extra, **kwargs):
-        pass # self.dgscripts.trigger_act(strip_ansi(text), from_obj, **kwargs)
+        pass  # self.dgscripts.trigger_act(strip_ansi(text), from_obj, **kwargs)
 
     def at_hear_speech(self, speech: str, speaker, msg_type: str, **kwargs):
         """
@@ -159,7 +164,10 @@ class AthanorBase:
         if delivery:
             self.at_delivery(from_obj, mapping, )
 
-    def all_trait_slots(self) -> dict[str, dict]:
+    def all_quirk_slots(self) -> dict[str, dict]:
+        return dict()
+
+    def all_aspect_slots(self) -> dict[str, dict]:
         """
         Replace this method with one for this typeclasses's trait slots.
         """

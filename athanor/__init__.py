@@ -1,6 +1,11 @@
 from collections import defaultdict
 
-TRAIT_CLASSES = defaultdict(dict)
+ASPECT_SLOT_CLASSES = dict()
+ASPECT_CLASSES = defaultdict(dict)
+
+QUIRK_SLOT_CLASSES = dict()
+QUIRK_CLASSES = defaultdict(dict)
+
 STAT_CLASSES = defaultdict(dict)
 
 CHARACTERS_ONLINE = set()

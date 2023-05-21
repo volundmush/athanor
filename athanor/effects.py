@@ -195,8 +195,8 @@ class Effect:
         return self.description or ""
 
     @classmethod
-    def get_class_name(cls) -> str:
-        return getattr(cls, "class_name", cls.__name__)
+    def get_key(cls) -> str:
+        return getattr(cls, "key", cls.__name__.lower())
 
     def export(self) -> typing.Tuple[str, dict]:
         """
@@ -206,7 +206,7 @@ class Effect:
         for attr in self.persistent_attrs:
             out[attr] = getattr(self, attr)
         out["component_data"] = [component.export() for component in self.components]
-        out["effect_class"] = self.get_class_name()
+        out["effect_class"] = self.get_key()
 
         return self.name, out
 
