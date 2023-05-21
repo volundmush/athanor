@@ -1,5 +1,7 @@
 import sys
 import typing
+from rich.console import group
+from athanor.mudrich import EvToRich
 
 
 class EquipSlot:
@@ -224,3 +226,21 @@ class EquipHandler:
         Returns a dictionary containing only the slots which do not have items equipped.
         """
         return {k: v for k, v in self.slots.items() if not v.item}
+
+    def all(self):
+        return list([v.item for v in self.slots.values() if v.item])
+
+    @group()
+    def display_equipment(self, looker=None, show_empty=True):
+        if not looker:
+            looker = self.owner
+
+        def row(s, obj):
+            return EvToRich(
+                f"|C<|c{slot.display_slot():<20}|C>|n {obj.get_display_name(looker=looker) if obj else 'Nothing'}")
+
+        for slot in self.slots.values():
+            if (eq := slot.item) and looker.can_see(eq):
+                yield row(slot, eq)
+            elif show_empty:
+                yield row(slot, eq)

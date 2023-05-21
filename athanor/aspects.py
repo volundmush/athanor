@@ -84,7 +84,7 @@ class Aspect:
 
     def export(self) -> dict:
         out = {attr: getattr(self, attr) for attr in self.persistent_attrs}
-        out["key"] = self.key()
+        out["key"] = self.get_key()
         return out
 
     def save(self):
@@ -131,8 +131,8 @@ class AspectSlot:
         return False, "No aspect to remove."
 
     def load(self, **data):
-        if "key" in data:
-            self.set_aspect(ASPECT_CLASSES[self.get_key()].get(data["key"])(self), load=True, **data)
+        if (key := data.pop("key", None)):
+            self.set_aspect(key, load=True, **data)
 
     def load_final(self):
         if self.aspect:
@@ -160,8 +160,6 @@ class AspectHandler:
         for attr in self.owner.attributes.all(category=self.attr_category):
             if attr.key in self.slots:
                 self.slots[attr.key].load(**attr.value)
-        for slot in self.slots.values():
-            slot.load()
         for slot in self.slots.values():
             slot.load_final()
 

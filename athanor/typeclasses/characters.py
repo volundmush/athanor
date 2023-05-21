@@ -142,8 +142,6 @@ class AthanorPlayerCharacter(AthanorCharacter):
         """
         if not looker:
             return self.key
-        if self.locks.check_lockstring(looker, "perm(Builder)"):
-            return f"{self.key}(#{self.id})"
         if settings.DUB_SYSTEM_ENABLED:
             if hasattr(looker, "get_dub_name") and (dub_name := looker.get_dub_name(self)):
                 return dub_name

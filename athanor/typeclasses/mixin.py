@@ -257,19 +257,16 @@ class AthanorBase:
 
         if text is not None:
             extra = None
-            if isinstance(text, tuple):
+            if isinstance(text, (tuple, list)) and len(text) == 2:
                 t = text[0]
                 extra = text[1]
             else:
                 t = text
-            if not isinstance(t, str):
-                if not hasattr(t, "__rich_console__"):
-                    if not isinstance(t, (list, tuple)):
-                        # sanitize text before sending across the wire
-                        try:
-                            t = to_str(text)
-                        except Exception:
-                            t = repr(text)
+            if not isinstance(t, str) and not hasattr(t, "__rich_console__"):
+                try:
+                    t = to_str(text)
+                except Exception:
+                    t = repr(text)
             else:
                 if highlight:
                     t = MudText(t)
@@ -327,11 +324,28 @@ class AthanorBase:
         Args:
             looker (Object, optional): The object looking at this object.
         """
-        name = self.attributes.get(key="short_description", default=self.key)
-        if looker and self.locks.check_lockstring(looker, "perm(Builder)"):
-            return f"{name}(#{self.id})"
-        return name
+        return self.attributes.get(key="short_description", default=self.key)
 
     @lazy_property
     def stats(self):
         return StatHandler(self, self._content_types)
+
+    def filter_visible(self, candidates) -> list["AthanorItem"]:
+        return [c for c in candidates if self.can_see(c)]
+
+    def get_visible_nearby(self, obj_type: str=None):
+        candidates = []
+
+        match obj_type:
+            case "exit":
+                candidates.extend(self.location.exits)
+            case "item":
+                candidates.extend(self.location.get_inventory())
+            case _:
+                if (check_func := getattr(self, f"get_visible_nearby_{obj_type}", None)) is not None and callable(check_func):
+                    candidates.extend(check_func())
+                elif isinstance(obj_type, str):
+                    candidates.extend(self.location.contents_get(content_type=obj_type))
+
+        candidates.remove(self)
+        return self.filter_visible(candidates)
