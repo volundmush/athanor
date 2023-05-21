@@ -162,7 +162,7 @@ class QuirkHandler:
 
     def load(self):
         self.init_slots()
-        for attr in self.owner.attributes.get(category=self.attr_category):
+        for attr in self.owner.attributes.all(category=self.attr_category):
             if attr.key in self.slots:
                 self.slots[attr.key].load(**attr.value)
         for slot in self.slots.values():
