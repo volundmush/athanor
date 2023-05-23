@@ -12,6 +12,7 @@ class Stat:
     methods and add more to it fit for your game.
     """
     category = None
+    virtual = False
 
     __slots__ = ("handler", "value", "cache")
 
@@ -48,6 +49,8 @@ class Stat:
         """
         Set the stat's flat value to the given value.
         """
+        if self.virtual:
+            return
         self.value = value
         self.save()
 
@@ -55,6 +58,8 @@ class Stat:
         """
         Modify the stat's flat value by the given value.
         """
+        if self.virtual:
+            return
         self.set(self.value + value)
 
     def get(self) -> float:
@@ -67,20 +72,19 @@ class Stat:
         """
         Save the stat to the database.
         """
+        if self.virtual:
+            return
         self.owner.attributes.add(category=self.handler.save_category(), key=self.get_key(), value=self.value)
 
     def load(self):
         """
         Load the stat from the database.
         """
+        if self.virtual:
+            self.value = self.default()
+            return
         self.value = self.owner.attributes.get(category=self.handler.save_category(), key=self.get_key(),
                                                default=self.default())
-
-    def get_dynamic(self) -> float:
-        """
-        This should calculate the stat's value based on its base value and any modifiers.
-        """
-        return self.base_value()
 
     def calculate(self) -> float:
         """
@@ -132,8 +136,8 @@ class StatHandler:
 
     def load(self):
         for category in self.stat_categories:
-            for stat in STAT_CLASSES.get(category, list()):
-                self.stats[stat.get_key()] = stat(self)
+            for k, v in STAT_CLASSES.get(category, dict()).items():
+                self.stats[k] = v(self)
         for k, v in self.stats.items():
             v.load()
 
