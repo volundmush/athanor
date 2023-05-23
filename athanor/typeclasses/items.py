@@ -2,7 +2,7 @@ from .mixin import AthanorBase
 from evennia.objects.objects import DefaultObject
 
 
-class AthanorItem(DefaultObject, AthanorBase):
+class AthanorItem(AthanorBase, DefaultObject):
     _content_types = ("item",)
 
     def is_equipped(self) -> bool:

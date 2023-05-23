@@ -104,7 +104,7 @@ class QuirkSlot:
 
     @classmethod
     def get_key(cls):
-        return getattr(cls, "key", cls.__name__.lower())
+        return getattr(cls, "key", cls.__name__).lower()
 
     def __init__(self, handler, **kwargs):
         self.handler = handler
@@ -162,12 +162,12 @@ class QuirkHandler:
 
     def load(self):
         self.init_slots()
-        for attr in self.owner.attributes.all(category=self.attr_category):
-            print(f"{attr.key}: {attr.value}")
-            if attr.key in self.slots:
-                self.slots[attr.key].load(**attr.value)
-        for slot in self.slots.values():
-            slot.load()
+        if (save_data := self.owner.attributes.get(category=self.attr_category, return_list=True, return_obj=True)):
+            save_data = [s for s in save_data if s]
+            for attr in save_data:
+                print(f"{attr.key}: {attr.value}")
+                if attr.key in self.slots:
+                    self.slots[attr.key].load(**attr.value)
         for slot in self.slots.values():
             slot.load_final()
 

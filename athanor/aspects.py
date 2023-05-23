@@ -46,7 +46,7 @@ class Aspect:
 
         By default, that's the class name, but a class property is good for overriding.
         """
-        return getattr(cls, "key", cls.__name__.lower())
+        return getattr(cls, "key", cls.__name__).lower()
 
     def on_remove(self):
         """
@@ -100,7 +100,7 @@ class AspectSlot:
 
     @classmethod
     def get_key(cls):
-        return getattr(cls, "key", cls.__name__.lower())
+        return getattr(cls, "key", cls.__name__).lower()
 
     def __init__(self, handler, **kwargs):
         self.handler = handler
@@ -113,7 +113,7 @@ class AspectSlot:
     def set_aspect(self, aspect, load=False, **kwargs):
         if self.aspect:
             self.remove_aspect()
-        if not (aspect_class := ASPECT_CLASSES[self.get_key()].get(aspect, None)):
+        if not (aspect_class := ASPECT_CLASSES[self.get_key()].get(aspect.lower(), None)):
             return False, f"Invalid aspect: {aspect}"
         self.aspect = aspect_class(self, **kwargs)
         if load:
@@ -157,9 +157,11 @@ class AspectHandler:
 
     def load(self):
         self.init_slots()
-        for attr in self.owner.attributes.all(category=self.attr_category):
-            if attr.key in self.slots:
-                self.slots[attr.key].load(**attr.value)
+        if (save_data := self.owner.attributes.get(category=self.attr_category, return_list=True, return_obj=True)):
+            save_data = [s for s in save_data if s]
+            for attr in save_data:
+                if attr.key in self.slots:
+                    self.slots[attr.key].load(**attr.value)
         for slot in self.slots.values():
             slot.load_final()
 

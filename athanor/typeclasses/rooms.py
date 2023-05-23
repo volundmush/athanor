@@ -2,25 +2,27 @@ import typing
 from collections import defaultdict
 from .mixin import AthanorBase
 from evennia.objects.objects import DefaultRoom, DefaultObject
-from athanor.mudrich import EvToRich, MudText
-from rich.console import Group, group
-from rich.table import Table
 from evennia.utils.ansi import ANSIString
 from django.conf import settings
-from rich.style import NULL_STYLE
+from evennia.utils import evtable
 
 
-class AthanorRoom(DefaultRoom, AthanorBase):
+class AthanorRoom(AthanorBase, DefaultRoom):
     """
     Not much different from Evennia DefaultRooms.
     """
     _content_types = ("room",)
-    compass_template = """||{N:^3}||
-||{NW:>3}|| ||{U:^3}|| ||{NE:<3}||
-||{W:>3}|| ||{I:^3}|| ||{E:<3}||
-||{SW:>3}|| ||{D:^3}|| ||{SE:<3}||
-||{S:^3}||
-"""
+
+    format_kwargs = ("header", "details", "desc", "subheader", "map", "contents")
+
+    appearance_template = """
+{header}
+{details}
+{header}
+{desc}
+{map}
+{contents}
+    """
 
     def at_object_creation(self):
         # typing.Dict[ExitDir, "AthanorExit"]
@@ -97,6 +99,13 @@ class AthanorRoom(DefaultRoom, AthanorBase):
 
         return cur_map
 
+    compass_template = """      ||{N:^3}||
+||{NW:>3}|| ||{U:^3}|| ||{NE:<3}||
+||{W:>3}|| ||{I:^3}|| ||{E:<3}||
+||{SW:>3}|| ||{D:^3}|| ||{SE:<3}||
+      ||{S:^3}||
+"""
+
     def generate_compass(self, looker):
         con_map = self.get_visible_contents(looker)
         compass_dict = defaultdict(str)
@@ -121,76 +130,74 @@ class AthanorRoom(DefaultRoom, AthanorBase):
                 case "outside":
                     compass_dict["I"] = "|MOUT|n"
 
-        return self.compass_template.format_map(compass_dict)
+        return self.compass_template.format_map(compass_dict).splitlines()
 
-    def generate_map_legend(self, looker, **kwargs):
-        return ""
+    def generate_map_legend(self, looker, **kwargs) -> list[str]:
+        return []
 
     def generate_builder_info(self, looker, **kwargs):
         return ""
 
-    header_line = MudText("O----------------------------------------------------------------------O")
-    subheader_line = MudText("------------------------------------------------------------------------")
+    def get_display_header(self, looker, **kwargs):
+        return "O----------------------------------------------------------------------O"
 
-    @group()
-    def render_automap(self, looker, **kwargs):
-        yield self.subheader_line
+    def get_display_subheader(self, looker, **kwargs):
+        return "------------------------------------------------------------------------"
+
+    def get_display_details(self, looker, **kwargs):
+        out = []
+        builder = self.locks.check_lockstring(looker, "perm(Builder)")
+
+        out.append(f"Location: {self.get_display_name(looker=looker, **kwargs)}")
+        if self.location:
+            out.append(f"Area: {self.location.get_display_name(looker=looker, **kwargs)}")
+        if builder:
+            out.append(self.generate_builder_info(looker, **kwargs))
+        return "\r\n".join(out)
+
+    def get_display_map(self, looker, **kwargs):
+        if not settings.AUTOMAP_ENABLED:
+            return self.get_display_subheader(looker, **kwargs)
+        out = []
+        out.append(self.get_display_subheader(looker, **kwargs))
         y_coor = [2, 1, 0, -1, -2]
         x_coor = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
         automap = self.generate_automap(looker, min_x=-4, max_x=4)
-        col_automap = EvToRich("\r\n".join(["".join([automap[y][x] for x in x_coor]) for y in y_coor]))
+        col_automap = ["".join([automap[y][x] for x in x_coor]) for y in y_coor]
         map_legend = self.generate_map_legend(looker, **kwargs)
-        table = Table(box=None)
-        table.add_column("Compass", width=17, header_style=NULL_STYLE, justify="center")
-        table.add_column("Auto-Map", width=10, header_style=NULL_STYLE)
-        table.add_column("Map Key", width=37, header_style=NULL_STYLE)
-        table.add_row(EvToRich("|r---------"), EvToRich("|r----------"),
-                      EvToRich("|r-----------------------------"))
-        table.add_row(EvToRich(self.generate_compass(looker)), col_automap, EvToRich(", ".join(map_legend)))
-        yield table
+        compass = self.generate_compass(looker)
+        out.append("       Compass        AutoMap                  Map Key|n")
+        out.append("|r -----------------   ---------    -------------------------------------|n")
+        max_lines = max(len(col_automap), len(map_legend), len(compass))
+        for i in range(max_lines):
+            compass_line = compass[i] if i < len(compass) else ""
+            col_automap_line = col_automap[i] if i < len(col_automap) else ""
+            map_legend_line = map_legend[i] if i < len(map_legend) else ""
+            sep1 = " " * (20 - len(ANSIString(compass_line)))
+            sep2 = " " * (14 - len(ANSIString(col_automap_line)))
+            line = " " + compass_line + sep1 + col_automap_line + sep2 + map_legend_line
+            out.append(line)
+        return "\r\n".join(out)
 
-    @group()
-    def return_appearance(self, looker, **kwargs):
 
-        if not looker:
-            return ""
+    def get_list_display_for(self, obj, looker, **kwargs):
+        return obj.get_room_display_name(looker=looker, **kwargs)
 
-        def gen_name(obj):
-            return obj.get_display_name(looker=looker, pose=True, **kwargs)
-
-        builder = self.locks.check_lockstring(looker, "perm(Builder)")
-
-        yield self.header_line
-
-        yield EvToRich(f"Location: {gen_name(self)}")
-        if self.location:
-            yield EvToRich(f"Area: {gen_name(self.location)}")
-
-        if builder:
-            yield EvToRich(self.generate_builder_info(looker, **kwargs))
-
-        yield self.header_line
-
-        # ourselves
-        desc = self.db.desc or "You see nothing special."
-
-        yield EvToRich(desc)
-
-        if settings.AUTOMAP_ENABLED:
-            yield self.render_automap(looker, **kwargs)
-
-        yield self.subheader_line
-
-        # contents
+    def get_display_contents(self, looker, **kwargs):
         contents_map = self.get_visible_contents(looker, **kwargs)
+        out = list()
 
-        if (char_obj := contents_map.get("characters", None)):
-            characters = ANSIString("\n").join([gen_name(obj) for obj in char_obj])
-            yield EvToRich(characters)
-
-        if (thing_obj := contents_map.get("things", None)):
-            things = ANSIString("\n").join([gen_name(obj) for obj in thing_obj])
-            yield EvToRich(things)
+        for content_type in ("characters", "items"):
+            if (content_obj := contents_map.get(content_type, None)):
+                for obj in content_obj:
+                    out.append(self.get_list_display_for(obj, looker, **kwargs))
+        return "\r\n".join(out)
 
     def get_display_name(self, looker=None, **kwargs):
         return self.attributes.get(key="short_description", default=self.key)
+
+    def get_display_desc(self, looker, **kwargs):
+        return self.attributes.get(key="desc", default="").strip("|/")
+
+    def format_appearance(self, appearance, looker, **kwargs):
+        return appearance.strip().rstrip("|/")

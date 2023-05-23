@@ -6,7 +6,7 @@ from athanor import CHARACTERS_ONLINE
 from athanor.utils import utcnow
 
 
-class AthanorCharacter(DefaultCharacter, AthanorBase):
+class AthanorCharacter(AthanorBase, DefaultCharacter):
     """
     Abstract base class for Athanor characters.
     Do not instantiate directly.

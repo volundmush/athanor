@@ -2,11 +2,9 @@ import typing
 from collections import defaultdict
 from django.conf import settings
 from typing import Optional, List
-from evennia.utils import logger, make_iter, to_str
 from evennia.utils.ansi import strip_ansi, ANSIString
 from evennia.utils.utils import lazy_property
 from athanor.utils import SafeDict, partial_match
-from athanor.mudrich import MudText
 from evennia.objects.objects import _MSG_CONTENTS_PARSER
 from athanor.equip import EquipHandler
 from athanor.aspects import AspectHandler
@@ -19,6 +17,22 @@ class AthanorBase:
     """
     Mixin for general Athanor functionality.
     """
+
+    format_kwargs = ("name", "desc", "header", "footer", "exits", "characters", "things")
+
+    def return_appearance(self, looker, **kwargs):
+        if not looker:
+            return ""
+        kwargs["contents_map"] = self.get_visible_contents(looker, **kwargs)
+        out_dict = SafeDict()
+        for k in self.format_kwargs:
+            if (f_func := getattr(self, f"get_display_{k}", None)):
+                if callable(f_func):
+                    out_dict[k] = f_func(looker, **kwargs)
+                else:
+                    out_dict[k] = f_func
+        return self.format_appearance(self.appearance_template.format_map(out_dict), looker, **kwargs)
+
 
     @lazy_property
     def equip(self):
@@ -62,6 +76,18 @@ class AthanorBase:
 
     def at_see(self, text, from_obj, msg_type, extra, **kwargs):
         pass  # self.dgscripts.trigger_act(strip_ansi(text), from_obj, **kwargs)
+
+    def has_active_sessions(self):
+        return bool(self.sessions.all())
+
+    def at_post_move(self, source_location, move_type="move", **kwargs):
+        """
+        We make sure to look around after a move.
+
+        """
+        if not self.has_active_sessions():
+            return
+        super().at_post_move(source_location, move_type, **kwargs)
 
     def at_hear_speech(self, speech: str, speaker, msg_type: str, **kwargs):
         """
@@ -179,6 +205,36 @@ class AthanorBase:
         """
         return dict()
 
+    def at_equip_item(self, item, slot, **kwargs):
+        """
+        Called by the EquipSlot after an item has been equipped.
+        This is mostly useful for making echos. It's not recommended to do
+        anything mechanically heavy here.
+        """
+        pass
+
+    def on_equip(self, owner, slot, **kwargs):
+        """
+        Called by the EquipSlot on an item after it has been equipped.
+        This is most useful for applying Effects and similar shenanigans.
+        """
+        pass
+
+    def at_remove_item(self, item, slot, **kwargs):
+        """
+        Called by the EquipSlot after an item has been removed.
+        This is mostly useful for making echos. It's not recommended to do
+        anything mechanically heavy here.
+        """
+        pass
+
+    def on_remove(self, owner, slot, **kwargs):
+        """
+        Called by the EquipSlot on an item after it has been removed.
+        This is most useful for applying Effects and similar shenanigans.
+        """
+        pass
+
     def available_equip_slots(self, **kwargs) -> dict[str, typing.Type["EquipSlot"]]:
         return {k: v for k, v in self.all_equip_slots() if v.is_available(self, **kwargs)}
 
@@ -207,77 +263,6 @@ class AthanorBase:
         and add them to the character's non-persistent effects as appropriate.
         """
         pass
-
-    def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
-        """
-        Emits something to a session attached to the object.
-
-        Args:
-            text (str or tuple, optional): The message to send. This
-                is treated internally like any send-command, so its
-                value can be a tuple if sending multiple arguments to
-                the `text` oob command.
-            from_obj (obj or list, optional): object that is sending. If
-                given, at_msg_send will be called. This value will be
-                passed on to the protocol. If iterable, will execute hook
-                on all entities in it.
-            session (Session or list, optional): Session or list of
-                Sessions to relay data to, if any. If set, will force send
-                to these sessions. If unset, who receives the message
-                depends on the MULTISESSION_MODE.
-            options (dict, optional): Message-specific option-value
-                pairs. These will be applied at the protocol level.
-        Keyword Args:
-            any (string or tuples): All kwarg keys not listed above
-                will be treated as send-command names and their arguments
-                (which can be a string or a tuple).
-
-        Notes:
-            `at_msg_receive` will be called on this Object.
-            All extra kwargs will be passed on to the protocol.
-
-        """
-        # try send hooks
-        if from_obj:
-            for obj in make_iter(from_obj):
-                try:
-                    obj.at_msg_send(text=text, to_obj=self, **kwargs)
-                except Exception:
-                    logger.log_trace()
-        kwargs["options"] = options
-
-        highlight = options.get("highlight", False)
-
-        try:
-            if not self.at_msg_receive(text=text, from_obj=from_obj, **kwargs):
-                # if at_msg_receive returns false, we abort message to this object
-                return
-        except Exception:
-            logger.log_trace()
-
-        if text is not None:
-            extra = None
-            if isinstance(text, (tuple, list)) and len(text) == 2:
-                t = text[0]
-                extra = text[1]
-            else:
-                t = text
-            if not isinstance(t, str) and not hasattr(t, "__rich_console__"):
-                try:
-                    t = to_str(text)
-                except Exception:
-                    t = repr(text)
-            else:
-                if highlight:
-                    t = MudText(t)
-            kwargs["text"] = t if extra is None else (t, extra)
-            if settings.PROMPT_ENABLED and not kwargs.pop("noprompt", False):
-                self.prompt.prepare(prompt_delay=settings.PROMPT_DELAY)
-
-        # relay to session(s)
-        sessions = make_iter(session) if session else self.sessions.all()
-        for session in sessions:
-            session.data_out(**kwargs)
 
     @lazy_property
     def prompt(self):
@@ -311,11 +296,8 @@ class AthanorBase:
             return ostring.lower() in keywords
         return bool(partial_match(ostring, keywords))
 
-    def search(self, *args, **kwargs):
-        self.objects.looker = self
-        results = super().search(*args, **kwargs)
-        del self.objects.looker
-        return results
+    def get_list_display_for(self, obj, looker, **kwargs):
+        return obj.get_display_name(looker=looker, **kwargs)
 
     def get_display_name(self, looker=None, **kwargs) -> str:
         """
@@ -324,7 +306,7 @@ class AthanorBase:
         Args:
             looker (Object, optional): The object looking at this object.
         """
-        return self.attributes.get(key="short_description", default=self.key)
+        return self.attributes.get(key="short_description", default=self.key).strip("|/")
 
     @lazy_property
     def stats(self):
@@ -349,3 +331,13 @@ class AthanorBase:
 
         candidates.remove(self)
         return self.filter_visible(candidates)
+
+
+    def get_room_display_name(self, looker=None, **kwargs) -> str:
+        """
+        Returns the name of the object to looker.
+
+        Args:
+            looker (Object, optional): The object looking at this object.
+        """
+        return self.get_display_name(looker=looker, **kwargs)

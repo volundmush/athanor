@@ -3,7 +3,7 @@ from evennia import DefaultObject
 from .mixin import AthanorBase
 
 
-class AthanorStructure(DefaultObject, AthanorBase):
+class AthanorStructure(AthanorBase, DefaultObject):
     _content_types = ("structure",)
 
     def at_pre_move(self, destination: typing.Optional[DefaultObject], **kwargs):

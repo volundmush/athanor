@@ -17,7 +17,7 @@ class EquipSlot:
     # There's no need for this to contain 'key', 'persistent' or 'item'.
     persistent_attrs = ("slot_type", "sort_order", "wear_verb", "wear_display", "remove_verb", "remove_display")
 
-    __slots__ = ("handler", "owner", "key", "item", "slot_type", "sort_order", "wear_verb", "wear_display",
+    __slots__ = ("handler", "key", "item", "slot_type", "sort_order", "wear_verb", "wear_display",
                  "remove_verb", "remove_display", "list_display", "persistent")
 
     def __init__(self, handler, key: str, slot_type: str, list_display: str, sort_order: int = 0,
@@ -27,9 +27,6 @@ class EquipSlot:
 
         # The EquipHandler managing this EquipSlot.
         self.handler = handler
-
-        # The object that owns this EquipSlot - and whatever it has equipped.
-        self.owner = handler.owner
 
         # a short string like "right_ring_finger" which uniquely describes this equip slot for this character.
         # It is used for an Attribute key so make sure it really is unique for this character.
@@ -72,6 +69,10 @@ class EquipSlot:
         # if a character's race somehow changes, as an example. Those special ones should be persistent.
         self.persistent = persistent
 
+    @property
+    def owner(self):
+        return self.handler.owner
+
     def display_slot(self):
         if self.list_display:
             return self.list_display
@@ -83,13 +84,13 @@ class EquipSlot:
         """
         return self.item.get_display_name(looker=looker, **kwargs)
 
-    def is_available(self):
+    def is_available(self) -> tuple[bool, str]:
         """
         For certain reasons, a character might have an equip slot, but it may not be available. For instance,
         a shield slot might be available only if the character is wielding a one-handed weapon. Alternatively,
         a right ring finger might only be available if the character has a right arm (without a missing hand).
         """
-        return True
+        return True, ""
 
     def can_equip(self, item) -> typing.Tuple[bool, str]:
         """
@@ -98,8 +99,31 @@ class EquipSlot:
         # Under no circumstances can a non-item be equipped!
         if "item" not in item._content_types:
             return False, f"{item.get_display_name(looker=self.owner)} is not an item!"
+        avail, err = self.is_available()
+        if not avail:
+            return False, err
         if self.slot_type in item.get_equip_types():
             return True, ""
+
+    def equip(self, item):
+        """
+        Equips the item to this slot.
+        """
+        self.item = item
+        self.item.attributes.add(key=self.handler.item_attr, value=self.key)
+        self.save()
+        self.owner.at_equip_item(item, self)
+        self.item.on_equip(self.owner, self)
+
+    def remove(self):
+        if not self.item:
+            return
+        item = self.item
+        item.attributes.remove(key=self.handler.item_attr)
+        self.item = None
+        self.save()
+        self.owner.at_remove_item(item, self)
+        item.on_remove(self.owner, self)
 
     def save(self):
         """
@@ -132,9 +156,11 @@ class EquipHandler:
         Loads the EquipSlots from the owner's Attributes.
         """
         slot_data = self.owner.all_equip_slots()
-
-        for key, data in self.owner.attributes.get(category=self.attr_category).items():
-            value = data.value
+        if (save_data := self.owner.attributes.get(category=self.attr_category, return_list=True, return_obj=True)):
+            save_data = [s for s in save_data if s]
+        for attr in save_data:
+            key = attr.key
+            value = attr.value
             if key in slot_data:
                 # this should NOT be a persistent slot. So we only need to retrieve 'item' from the data.
                 slot_data[key].item = value.get("item", None)
@@ -211,8 +237,13 @@ class EquipHandler:
         Checks to see if there are non-persistent slots in the attribute category which don't correspond to
         loaded slots and removes the unneeded data.
         """
-        for key, data in self.owner.attributes.get(category=self.attr_category).items():
-            if key not in self.slots and not data.value.get("persistent", False):
+        save_data = self.owner.attributes.get(category=self.attr_category, return_list=True, return_obj=True)
+        save_data = [s for s in save_data if s]
+
+        for attr in save_data:
+            key = attr.key
+            value = attr.value
+            if key not in self.slots and not value.get("persistent", False):
                 self.owner.attributes.remove(category=self.attr_category, key=key)
 
     def occupied(self):
@@ -230,17 +261,33 @@ class EquipHandler:
     def all(self):
         return list([v.item for v in self.slots.values() if v.item])
 
-    @group()
     def display_equipment(self, looker=None, show_empty=True):
         if not looker:
             looker = self.owner
 
         def row(s, obj):
-            return EvToRich(
-                f"|C<|c{slot.display_slot():<20}|C>|n {obj.get_display_name(looker=looker) if obj else 'Nothing'}")
+            return f"|C<|c{slot.display_slot():<20}|C>|n {obj.get_display_name(looker=looker) if obj else 'Nothing'}"
+
+        out = list()
 
         for slot in self.slots.values():
             if (eq := slot.item) and looker.can_see(eq):
-                yield row(slot, eq)
+                out.append(row(slot, eq))
             elif show_empty:
-                yield row(slot, eq)
+                out.append(row(slot, eq))
+
+        return "\r\n".join(out)
+
+    def equip(self, slot: str, item: "AthanorItem") -> tuple[bool, str]:
+        if not (eq_slot := self.slots.get(slot.lower(), None)):
+            return False, f"{slot} does not exist!"
+        can_equip, err = eq_slot.can_equip(item)
+        if not can_equip:
+            return False, err
+        if eq_slot.item:
+            return False, f"{eq_slot.display_slot()} is already occupied by {eq_slot.item.get_display_name(looker=self.owner)}!"
+        if item.location != self.owner:
+            return False, f"{item.get_display_name(looker=self.owner)} is not in your inventory!"
+
+
+

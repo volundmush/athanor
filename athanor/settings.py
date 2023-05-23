@@ -63,13 +63,13 @@ BASE_ACCOUNT_TYPECLASS = "athanor.typeclasses.accounts.AthanorAccount"
 
 BASE_EFFECT_CLASS = "athanor.effects.Effect"
 
-PORTAL_SESSION_HANDLER_CLASS = "athanor.portalsessions.AthanorPortalSessionHandler"
-SERVER_SESSION_HANDLER_CLASS = "athanor.serversession.AthanorServerSessionHandler"
+#PORTAL_SESSION_HANDLER_CLASS = "athanor.portalsessions.AthanorPortalSessionHandler"
+#SERVER_SESSION_HANDLER_CLASS = "athanor.serversession.AthanorServerSessionHandler"
 
-TELNET_PROTOCOL_CLASS = "athanor.portalsessions.PlainTelnet"
-SSL_PROTOCOL_CLASS = "athanor.portalsessions.SecureTelnet"
-SSH_PROTOCOL_CLASS = "athanor.portalsessions.SSHProtocol"
-WEBSOCKET_PROTOCOL_CLASS = "athanor.portalsessions.WebSocket"
+#TELNET_PROTOCOL_CLASS = "athanor.portalsessions.PlainTelnet"
+#SSL_PROTOCOL_CLASS = "athanor.portalsessions.SecureTelnet"
+#SSH_PROTOCOL_CLASS = "athanor.portalsessions.SSHProtocol"
+#WEBSOCKET_PROTOCOL_CLASS = "athanor.portalsessions.WebSocket"
 
 
 PROMPT_ENABLED = True

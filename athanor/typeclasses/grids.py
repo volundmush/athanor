@@ -3,7 +3,7 @@ from evennia import DefaultObject
 from .mixin import AthanorBase
 
 
-class AthanorGrid(DefaultObject, AthanorBase):
+class AthanorGrid(AthanorBase, DefaultObject):
     _content_types = ("grid",)
 
     def at_pre_move(self, destination: typing.Optional[DefaultObject], **kwargs):

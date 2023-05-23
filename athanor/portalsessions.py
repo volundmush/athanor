@@ -6,10 +6,10 @@ from evennia.server.portal.ssh import SshProtocol
 from evennia.server.portal.webclient import WebSocketClient, json
 
 from evennia.server.portal.portalsessionhandler import PortalSessionHandler
-from evennia.utils.ansi import ANSIString
+from evennia.utils.ansi import ANSIString, parse_ansi
 from athanor.mudrich import EvToRich, install_mudrich
 from rich.highlighter import NullHighlighter, ReprHighlighter
-
+from rich.text import Segment
 from bs4 import BeautifulSoup
 
 
@@ -27,13 +27,13 @@ class AthanorPortalSessionHandler(PortalSessionHandler):
         super().sync(session)
         session.at_portal_sync()
 
-    def convert_rich(self, text):
-        if isinstance(text, ANSIString):
-            return EvToRich(text)
-        elif hasattr(text, "__rich_console__"):
+    def convert_rich(self, text, session):
+        if hasattr(text, "__rich_console__"):
             return text
-        elif isinstance(text, str):
-            return EvToRich(text)
+        elif isinstance(text, (str, ANSIString)):
+            x256 = session.protocol_flags.get("XTERM256", False)
+            strip_ansi = session.protocol_flags.get("NOCOLOR", False)
+            return parse_ansi(str(text), xterm256=256, strip_ansi=strip_ansi)
         return text
 
     def data_out(self, session, **kwargs):
@@ -43,7 +43,7 @@ class AthanorPortalSessionHandler(PortalSessionHandler):
             cmdargs, cmdkwargs = text_kw
             if cmdargs:
                 text = cmdargs[0]
-                cmdargs[0] = self.convert_rich(text)
+                cmdargs[0] = self.convert_rich(text, session)
                 kwargs["text"] = (cmdargs, cmdkwargs)
         super().data_out(session, **kwargs)
 
@@ -64,7 +64,8 @@ class PortalSessionMixin:
         else:
             width = 78
         return MudConsole(color_system=self.rich_color_system(), width=width,
-                          file=self, record=True)
+                          file=self, record=True, legacy_windows=False, highlight=False,
+                          highlighter=NullHighlighter(), theme=None)
 
     def rich_color_system(self):
         if self.protocol_flags.get("NOCOLOR", False):
@@ -118,7 +119,9 @@ class PortalSessionMixin:
         """
         A thin wrapper around Rich.Console's print. Returns the exported data.
         """
-        self.console.print(text, highlight=highlight)
+        if not hasattr(text, "__rich_console__"):
+
+        self.console.print(text, highlight=highlight, end="\r\n", style=None)
         return self.console.export_text(clear=True, styles=styles)
 
 

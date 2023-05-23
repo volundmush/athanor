@@ -3,7 +3,7 @@ from evennia import DefaultObject
 from .mixin import AthanorBase
 
 
-class AthanorSector(DefaultObject, AthanorBase):
+class AthanorSector(AthanorBase, DefaultObject):
     _content_types = ("sector",)
 
     def at_pre_move(self, destination: typing.Optional[DefaultObject], **kwargs):

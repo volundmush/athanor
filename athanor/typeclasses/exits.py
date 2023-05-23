@@ -4,7 +4,7 @@ from evennia.objects.objects import DefaultExit, DefaultObject
 from athanor.typing import NAME_TO_ENUM, ExitDir
 
 
-class AthanorExit(DefaultExit, AthanorBase):
+class AthanorExit(AthanorBase, DefaultExit):
     _content_types = ("exit",)
 
     def at_object_creation(self):

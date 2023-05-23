@@ -607,6 +607,30 @@ class MudText(OLD_TEXT):
 
         return cls(text=text, style=style, spans=spans)
 
+    def render(self, console: "Console", end: str = "") -> Iterable["Segment"]:
+        text = self.plain
+        length = len(text)
+        spans = self.spans.copy()
+
+        span = spans.pop(0) if spans else None
+
+        cur = 0
+        while cur < length:
+            if span and span.start >= cur:
+                yield Segment(text[cur:span.start], self.style)
+                yield Segment(text[span.start:span.end], span.style)
+                cur = span.end
+                span = spans.pop(0) if spans else None
+            else:
+                if not span:
+                    yield Segment(text[cur:], self.style)
+                    break
+                else:
+                    cur += 1
+
+        yield Segment(end, self.style)
+
+
 
 DEFAULT_STYLES = dict()
 

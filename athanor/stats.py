@@ -33,7 +33,7 @@ class Stat:
 
         By default, that's the class name, but a class property is good for overriding.
         """
-        return getattr(cls, "key", cls.__name__)
+        return getattr(cls, "key", cls.__name__).lower()
 
     def default(self) -> float:
         return 0.0
@@ -145,7 +145,7 @@ class StatHandler:
         This is the access method for getting base stats. Use this because it can cache complex
         derived stat lookups and save on processing time.
         """
-        if not (stat := self.stats.get(stat, None)):
+        if not (stat := self.stats.get(stat.lower(), None)):
             return 0.0
         return stat.base_value()
 
@@ -157,7 +157,7 @@ class StatHandler:
         use clear=False if you want to get multiple stats in a row without clearing the cache.
         This is best used by the calculate() method of a stat, so it can benefit from the cache.
         """
-        if not (stat := self.stats.get(stat, None)):
+        if not (stat := self.stats.get(stat.lower(), None)):
             return 0.0
         out_value = stat.effective()
         if clear:

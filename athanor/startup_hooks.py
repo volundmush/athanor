@@ -22,13 +22,13 @@ def at_server_init():
     """
     This is called first as the server is starting up, regardless of how.
     """
-    from mudrich import install_mudrich
-    install_mudrich()
+    import athanor
+    if athanor.STARTUP_CALLED:
+        return
+    athanor.STARTUP_CALLED = True
 
-    from athanor.search import get_objs_with_key_or_alias
-    from evennia.objects.manager import ObjectDBManager
-    ObjectDBManager.old_get_objs_with_key_or_alias = ObjectDBManager.get_objs_with_key_or_alias
-    ObjectDBManager.get_objs_with_key_or_alias = get_objs_with_key_or_alias
+    #from mudrich import install_mudrich
+    #install_mudrich()
 
     from evennia.utils.utils import callables_from_module
     from django.conf import settings
@@ -62,7 +62,7 @@ def at_server_init():
               (settings.QUIRK_CLASS_PATHS, QUIRK_CLASSES)):
         load_categorized(c[0], c[1], "get_key", "slot_type")
 
-    load_categorized(settings.STAT_CLASS_PATHS, STAT_CLASSES, "category")
+    load_categorized(settings.STAT_CLASS_PATHS, STAT_CLASSES, "get_key", "category")
 
 
 def start_looping():
