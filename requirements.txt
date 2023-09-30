@@ -1,4 +1,3 @@
 evennia
-rich
 orjson
 beautifulsoup4

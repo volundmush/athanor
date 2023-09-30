@@ -4,6 +4,7 @@ import random
 import string
 import yaml
 import orjson
+import re
 from datetime import datetime, timezone
 
 from pathlib import Path
@@ -12,6 +13,7 @@ from rich.ansi import AnsiDecoder
 from rich.console import group
 
 from collections import defaultdict
+
 
 
 def read_json_file(p: Path):
@@ -44,7 +46,7 @@ def fresh_uuid4(existing) -> uuid:
 
 
 def partial_match(match_text: str, candidates: typing.Iterable[typing.Any], key: callable = str,
-        exact: bool = False, many_results: bool =False) -> typing.Optional[typing.Any]:
+                  exact: bool = False, many_results: bool = False) -> typing.Optional[typing.Any]:
     """
     Given a list of candidates and a string to search for, does a case-insensitive partial name search against all
     candidates, preferring exact matches.
@@ -54,6 +56,9 @@ def partial_match(match_text: str, candidates: typing.Iterable[typing.Any], key:
         candidates (list of obj): A list of any kind of object that key can turn into a string to search.
         key (callable): A callable that must return a string, used to do the search. this 'converts' the objects in the
             candidate list to strings.
+        exact (bool): If True, only exact matches are returned.
+        many_results (bool): If True, returns a list of all matches. If False, returns the first match.
+
 
     Returns:
         Any or None, or a list[Any]
@@ -77,7 +82,6 @@ def partial_match(match_text: str, candidates: typing.Iterable[typing.Any], key:
     return out if many_results else None
 
 
-
 def generate_name(prefix: str, existing, gen_length: int = 20) -> str:
     def gen():
         return f"{prefix}_{''.join(random.choices(string.ascii_letters + string.digits, k=gen_length))}"
@@ -98,7 +102,6 @@ def ev_to_rich(s: str):
 
 
 def echo_action(template: str, actors: dict[str, "DefaultObject"], viewers: typing.Iterable["DefaultObject"], **kwargs):
-
     for viewer in viewers:
         var_dict = defaultdict(lambda: "!ERR!")
         var_dict.update(kwargs)
@@ -119,3 +122,34 @@ def utcnow():
 class SafeDict(dict):
     def __missing__(self, key):
         return '{' + key + '}'
+
+
+RE_STAT_NAME = re.compile(r"^[a-zA-Z0-9_ \-,.']+$")
+
+
+def validate_name(name: str, thing_type: str = "Stat", matcher=RE_STAT_NAME) -> str:
+    """
+    Cleans and validates a stat name for use in the system.
+    This should strip/trim leading/trailing spaces and squish double spaces
+    and only allow certain characters.
+
+    Args:
+        name (str): The input value.
+        thing_type (str): The name of the type of thing being provided. used for errors.
+        matcher (regex): The regex to match against.
+
+    Returns:
+        str: The cleaned name.
+
+    Raises:
+        ValueError: With the error message.
+    """
+    name = name.strip()
+    # remove all double-spaces.
+    while "  " in name:
+        name = name.replace("  ", " ")
+    if not name:
+        raise ValueError(f"{thing_type} name cannot be empty.")
+    if not matcher.match(name):
+        raise ValueError(f"{thing_type} contains forbidden characters.")
+    return name
