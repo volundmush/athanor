@@ -6,14 +6,12 @@ import yaml
 import orjson
 import re
 from datetime import datetime, timezone
-
-from pathlib import Path
-from evennia.utils.ansi import parse_ansi, ANSIString
-from rich.ansi import AnsiDecoder
-from rich.console import group
-
 from collections import defaultdict
+from pathlib import Path
 
+from evennia import SESSION_HANDLER
+from evennia.utils.ansi import parse_ansi, ANSIString
+from evennia.objects.objects import _MSG_CONTENTS_PARSER
 
 
 def read_json_file(p: Path):
@@ -90,27 +88,6 @@ def generate_name(prefix: str, existing, gen_length: int = 20) -> str:
         return u
 
 
-@group()
-def ev_to_rich(s: str):
-    if isinstance(s, ANSIString):
-        for line in AnsiDecoder().decode(str(s)):
-            yield line
-    else:
-        ev = parse_ansi(s, xterm256=True, mxp=True)
-        for line in AnsiDecoder().decode(ev):
-            yield line
-
-
-def echo_action(template: str, actors: dict[str, "DefaultObject"], viewers: typing.Iterable["DefaultObject"], **kwargs):
-    for viewer in viewers:
-        var_dict = defaultdict(lambda: "!ERR!")
-        var_dict.update(kwargs)
-        for k, v in actors.items():
-            v.get_template_vars(var_dict, k, looker=viewer)
-
-        viewer.msg(text=ev_to_rich(template.format_map(var_dict)))
-
-
 def iequals(first: str, second: str):
     return str(first).lower() == str(second).lower()
 
@@ -153,3 +130,34 @@ def validate_name(name: str, thing_type: str = "Stat", matcher=RE_STAT_NAME) -> 
     if not matcher.match(name):
         raise ValueError(f"{thing_type} contains forbidden characters.")
     return name
+
+
+def online_characters():
+    return {sess.puppet for sess in SESSION_HANDLER.get_sessions() if sess.puppet}
+
+
+def format_for_nobody(template: str, mapping: dict = None) -> str:
+    if mapping is None:
+        mapping = {}
+
+    outmessage = _MSG_CONTENTS_PARSER.parse(
+        template,
+        raise_errors=True,
+        return_string=True,
+        caller=None,
+        receiver=None,
+        mapping=mapping,
+    )
+
+    keys = SafeDict({
+        key: obj.get_display_name(looker=None)
+        if hasattr(obj, "get_display_name")
+        else str(obj)
+        for key, obj in mapping.items()
+    })
+
+    return ANSIString(outmessage.format_map(keys))
+
+
+def staff_alert(source: str, message: str):
+    pass

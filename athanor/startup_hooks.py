@@ -30,7 +30,24 @@ def at_server_start():
     This is called every time the server starts up, regardless of
     how it was shut down.
     """
-    pass
+    from evennia.utils import callables_from_module, class_from_module
+    from django.conf import settings
+    import athanor
+
+    for t in ("UNLOGGEDIN", "SESSION", "CHARACTER", "ACCOUNT"):
+        cmdsets = f"CMDSETS_{t}_EXTRA"
+        cmdsets_from = getattr(settings, cmdsets)
+        cmdsets_to = getattr(athanor, cmdsets)
+
+        for cmdset in cmdsets_from:
+            cmdsets_to.append(class_from_module(cmdset))
+
+        modules = f"CMD_MODULES_{t}"
+        modules_from = getattr(settings, modules)
+        modules_to = getattr(athanor, modules)
+
+        for module in modules_from:
+            modules_to.extend(callables_from_module(module).values())
 
 
 def at_server_stop():

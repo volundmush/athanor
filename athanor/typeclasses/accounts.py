@@ -2,4 +2,6 @@ from evennia.accounts.accounts import DefaultAccount
 
 
 class AthanorAccount(DefaultAccount):
-    pass
+
+    def is_admin(self) -> bool:
+        return self.locks.check_lockstring(self, "perm(Admin)")
