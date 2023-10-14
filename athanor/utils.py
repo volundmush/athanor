@@ -8,14 +8,13 @@ import re
 from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
-
+from rest_framework import status
 from evennia import SESSION_HANDLER
 from evennia.utils.ansi import parse_ansi, ANSIString
-from evennia.objects.objects import _MSG_CONTENTS_PARSER
 
 
 def read_json_file(p: Path):
-    return orjson.loads(open(p, mode='rb').read())
+    return orjson.loads(open(p, mode="rb").read())
 
 
 def read_yaml_file(p: Path):
@@ -43,8 +42,13 @@ def fresh_uuid4(existing) -> uuid:
     return fresh_uuid
 
 
-def partial_match(match_text: str, candidates: typing.Iterable[typing.Any], key: callable = str,
-                  exact: bool = False, many_results: bool = False) -> typing.Optional[typing.Any]:
+def partial_match(
+    match_text: str,
+    candidates: typing.Iterable[typing.Any],
+    key: callable = str,
+    exact: bool = False,
+    many_results: bool = False,
+) -> typing.Optional[typing.Any]:
     """
     Given a list of candidates and a string to search for, does a case-insensitive partial name search against all
     candidates, preferring exact matches.
@@ -98,7 +102,7 @@ def utcnow():
 
 class SafeDict(dict):
     def __missing__(self, key):
-        return '{' + key + '}'
+        return "{" + key + "}"
 
 
 RE_STAT_NAME = re.compile(r"^[a-zA-Z0-9_ \-,.']+$")
@@ -140,6 +144,8 @@ def format_for_nobody(template: str, mapping: dict = None) -> str:
     if mapping is None:
         mapping = {}
 
+    from evennia.objects.objects import _MSG_CONTENTS_PARSER
+
     outmessage = _MSG_CONTENTS_PARSER.parse(
         template,
         raise_errors=True,
@@ -149,15 +155,75 @@ def format_for_nobody(template: str, mapping: dict = None) -> str:
         mapping=mapping,
     )
 
-    keys = SafeDict({
-        key: obj.get_display_name(looker=None)
-        if hasattr(obj, "get_display_name")
-        else str(obj)
-        for key, obj in mapping.items()
-    })
+    keys = SafeDict(
+        {
+            key: obj.get_display_name(looker=None)
+            if hasattr(obj, "get_display_name")
+            else str(obj)
+            for key, obj in mapping.items()
+        }
+    )
 
     return ANSIString(outmessage.format_map(keys))
 
 
 def staff_alert(source: str, message: str):
     pass
+
+
+class RequestError(ValueError):
+    pass
+
+
+class Request:
+    """
+    Class used to handle requests against Athanor API objects to reduce boilerplate.
+    """
+
+    ex = RequestError
+    st = status
+
+    def __init__(self, target, **kwargs):
+        self.target = target
+        self.user: "DefaultAccount" = kwargs.pop("user", None)
+        self.character: "DefaultCharacter" = kwargs.pop("character", None)
+        self.operation: str = kwargs.pop("operation", None)
+        self.kwargs: dict = kwargs.pop("kwargs", dict())
+        self.extra: dict = kwargs
+        self.status: status = status.HTTP_200_OK
+        self.results = None
+
+    def error(self, message: str):
+        """
+        Send an error message to the user.
+        """
+        target = self.character or self.user
+        target.system_send(
+            getattr(self.target, "system_name", "SYSTEM"),
+            message,
+            mapping={},
+            from_obj=target,
+        )
+
+    def execute(self):
+        try:
+            if not self.user:
+                raise Exception("No user provided.")
+            if not (method := getattr(self.target, f"op_{self.operation}", None)):
+                raise Exception(f"No such operation: {self.operation}")
+            self.target.prepare_kwargs(self)
+            method(self)
+        except self.ex as err:
+            self.error(str(err))
+            if not self.results:
+                self.results = {"success": False, "error": str(err)}
+            return
+        except Exception as err:
+            self.error(str(err))
+            self.error(f"Something went very wrong. Please alert staff.")
+            if not self.results:
+                self.results = {"success": False, "error": str(err)}
+            return
+
+        if self.results and (announce := getattr(self.target, "do_announce", None)):
+            announce(self.results)

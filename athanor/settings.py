@@ -7,9 +7,13 @@ MAX_NR_SIMULTANEOUS_PUPPETS = 10
 MAX_NR_CHARACTERS = 10
 
 # Remove prefix stripping. We like our @ namespace.
-CMD_IGNORE_PREFIXES = ""
+# CMD_IGNORE_PREFIXES = ""
 
-AT_SERVER_STARTSTOP_MODULE = [AT_SERVER_STARTSTOP_MODULE] if isinstance(AT_SERVER_STARTSTOP_MODULE, str) else AT_SERVER_STARTSTOP_MODULE
+AT_SERVER_STARTSTOP_MODULE = (
+    [AT_SERVER_STARTSTOP_MODULE]
+    if isinstance(AT_SERVER_STARTSTOP_MODULE, str)
+    else AT_SERVER_STARTSTOP_MODULE
+)
 AT_SERVER_STARTSTOP_MODULE.append("athanor.startup_hooks")
 
 # A list of python modules which will be scanned to generate the
@@ -20,11 +24,11 @@ AT_SERVER_STARTSTOP_MODULE.append("athanor.startup_hooks")
 ACTION_TEMPLATES = {
     "say": '$You() $conj(say), "{text}"',
     "whisper": '$You() $conj(whisper) to $you(target), "{text}"',
-    "pose": '$You() {text}',
-    "emit": '{text}',
-    "semipose": '$You(){text}',
-    "login": '$You() $conj(have) entered the game.',
-    "logout": '$You() $conj(have) left the game.'
+    "pose": "$You() {text}",
+    "emit": "{text}",
+    "semipose": "$You(){text}",
+    "login": "$You() $conj(have) entered the game.",
+    "logout": "$You() $conj(have) left the game.",
 }
 
 BASE_CHARACTER_TYPECLASS = "athanor.typeclasses.characters.AthanorPlayerCharacter"
@@ -62,4 +66,22 @@ CMDSETS_ACCOUNT_EXTRA = []
 CMD_MODULES_UNLOGGEDIN = []
 CMD_MODULES_SESSION = []
 CMD_MODULES_CHARACTER = []
-CMD_MODULES_ACCOUNT = []
+CMD_MODULES_ACCOUNT = ["athanor.boards.commands"]
+
+BASE_BOARD_COLLECTION_TYPECLASS = "athanor.boards.boards.DefaultBoardCollection"
+BASE_BOARD_TYPECLASS = "athanor.boards.boards.DefaultBoard"
+BASE_FACTION_TYPECLASS = "athanor.factions.factions.DefaultFaction"
+
+BASE_BUCKET_TYPECLASS = "athanor.jobs.jobs.DefaultBucket"
+
+# ROOT_URLCONF = "athanor.urls"
+
+INSTALLED_APPS.extend(
+    [
+        "athanor.boards",
+        "athanor.jobs",
+        "athanor.factions",
+        "athanor.theme",
+        "athanor.login",
+    ]
+)
