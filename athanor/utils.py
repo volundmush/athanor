@@ -11,6 +11,7 @@ from pathlib import Path
 from rest_framework import status
 from evennia import SESSION_HANDLER
 from evennia.utils.ansi import parse_ansi, ANSIString
+from evennia.utils.evtable import EvTable
 
 
 def read_json_file(p: Path):
