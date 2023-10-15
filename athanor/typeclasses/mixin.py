@@ -11,11 +11,44 @@ from evennia.objects.objects import _MSG_CONTENTS_PARSER
 from athanor.utils import SafeDict, partial_match
 
 
-class AthanorBase:
+class AthanorLowBase:
+    msg_parser = _MSG_CONTENTS_PARSER
+
+    def render_system_header(self, header: str) -> str:
+        return f"|n|m-=<|n|w{header}|n|m>=-|n"
+
+    def system_send(self, header: str, template: str, extra_dict: typing.Optional[dict] = None, from_obj=None,
+             mapping: typing.Optional[dict] = None, delivery: typing.Tuple[str] = None, options=None, **kwargs):
+        if mapping is None:
+            mapping = dict()
+
+        outmessage = _MSG_CONTENTS_PARSER.parse(
+            template,
+            raise_errors=True,
+            return_string=True,
+            caller=from_obj if from_obj else self,
+            receiver=self,
+            mapping=mapping,
+        )
+
+        keys = SafeDict({
+                key: obj.get_display_name(looker=self)
+                if hasattr(obj, "get_display_name")
+                else str(obj)
+                for key, obj in mapping.items()
+            })
+
+        outmessage = ANSIString(f"{self.render_system_header(header)} {outmessage.format_map(keys)}")
+
+        self.msg(text=(outmessage, extra_dict) if extra_dict else outmessage, from_obj=from_obj,
+                 options=options, delivery=delivery, **kwargs)
+
+
+class AthanorBase(AthanorLowBase):
     """
     Mixin for general Athanor functionality.
     """
-    msg_parser = _MSG_CONTENTS_PARSER
+
     format_kwargs = ("name", "desc", "header", "footer", "exits", "characters", "things")
 
     def return_appearance(self, looker, **kwargs):
@@ -161,35 +194,6 @@ class AthanorBase:
                  options=options, delivery=delivery, **kwargs)
         if delivery:
             self.at_delivery(from_obj, mapping, )
-
-    def render_system_header(self, header: str) -> str:
-        return f"|n|m-=<|n|w{header}|n|m>=-|n"
-
-    def system_send(self, header: str, template: str, extra_dict: typing.Optional[dict] = None, from_obj=None,
-             mapping: typing.Optional[dict] = None, delivery: typing.Tuple[str] = None, options=None, **kwargs):
-        if mapping is None:
-            mapping = dict()
-
-        outmessage = _MSG_CONTENTS_PARSER.parse(
-            template,
-            raise_errors=True,
-            return_string=True,
-            caller=from_obj if from_obj else self,
-            receiver=self,
-            mapping=mapping,
-        )
-
-        keys = SafeDict({
-                key: obj.get_display_name(looker=self)
-                if hasattr(obj, "get_display_name")
-                else str(obj)
-                for key, obj in mapping.items()
-            })
-
-        outmessage = ANSIString(f"{self.render_system_header(header)} {outmessage.format_map(keys)}")
-
-        self.msg(text=(outmessage, extra_dict) if extra_dict else outmessage, from_obj=from_obj,
-                 options=options, delivery=delivery, **kwargs)
 
     def is_admin(self) -> bool:
         if self.account:

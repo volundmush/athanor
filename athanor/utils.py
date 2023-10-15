@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
+from django.conf import settings
 from rest_framework import status
 from evennia import SESSION_HANDLER
 from evennia.utils.ansi import parse_ansi, ANSIString
@@ -168,8 +169,23 @@ def format_for_nobody(template: str, mapping: dict = None) -> str:
     return ANSIString(outmessage.format_map(keys))
 
 
-def staff_alert(source: str, message: str):
-    pass
+def staff_alert(message: str, senders=None):
+    from evennia.comms.comms import DefaultChannel
+
+    if not (channel := DefaultChannel.objects.filter(db_key=settings.ALERTS_CHANNEL).first()):
+        return
+
+    channel.msg(message, senders=senders)
+
+
+def online_accounts():
+    from evennia import SESSION_HANDLER
+    return SESSION_HANDLER.all_connected_accounts()
+
+
+def online_characters():
+    from evennia import search_tag
+    return search_tag(key="puppeted", category="account")
 
 
 class RequestError(ValueError):
@@ -192,7 +208,8 @@ class Request:
         self.kwargs: dict = kwargs.pop("kwargs", dict())
         self.extra: dict = kwargs
         self.status: status = status.HTTP_200_OK
-        self.results = None
+        self.results = dict()
+        self.system_name = getattr(self.target, "system_name", "SYSTEM")
 
     def error(self, message: str):
         """
@@ -212,19 +229,15 @@ class Request:
                 raise Exception("No user provided.")
             if not (method := getattr(self.target, f"op_{self.operation}", None)):
                 raise Exception(f"No such operation: {self.operation}")
-            self.target.prepare_kwargs(self)
+            if hasattr(self.target, "prepare_kwargs"):
+                self.target.prepare_kwargs(self)
             method(self)
+            self.results.update({"success": True})
         except self.ex as err:
-            self.error(str(err))
-            if not self.results:
-                self.results = {"success": False, "error": str(err)}
+            error = str(err)
+            self.results.update({"success": False, "error": error, "message": error})
             return
         except Exception as err:
-            self.error(str(err))
-            self.error(f"Something went very wrong. Please alert staff.")
-            if not self.results:
-                self.results = {"success": False, "error": str(err)}
+            error = f"{str(err)} (Something went very wrong. Please alert staff.)"
+            self.results.update({"success": False, "error": error, "message": error})
             return
-
-        if self.results and (announce := getattr(self.target, "do_announce", None)):
-            announce(self.results)

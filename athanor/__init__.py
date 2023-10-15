@@ -88,7 +88,29 @@ def _apply_settings(settings):
 
     settings.AUTOMAP_ENABLED = False
 
+    settings.OPTIONS_ACCOUNT_DEFAULT["screenreader"] = (
+        "Minimize fancy formatting.",
+        "Boolean",
+        False,
+    )
+    settings.OPTIONS_ACCOUNT_DEFAULT["border_color"] = (
+        "Headers, footers, table borders, etc.",
+        "Color",
+        "M",
+    )
+    settings.OPTIONS_ACCOUNT_DEFAULT["header_text_color"] = (
+        "Text inside Header lines.",
+        "Color",
+        "w",
+    )
+    settings.OPTIONS_ACCOUNT_DEFAULT["client_width"] = (
+        "Preferred client width.",
+        "PositiveInteger",
+        settings.CLIENT_DEFAULT_WIDTH
+    )
     # ROOT_URLCONF = "athanor.urls"
+
+    settings.ALERTS_CHANNELS = "MudInfo"
 
 
 def init(settings, plugins=None):
