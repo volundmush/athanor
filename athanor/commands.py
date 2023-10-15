@@ -1,8 +1,20 @@
 from django.conf import settings
 from evennia.commands.default.muxcommand import MuxCommand, MuxAccountCommand
+from athanor.utils import Request
 
 
 class _AthanorCommandMixin:
+
+    def request(self, **kwargs) -> Request:
+        if hasattr(self.caller, "account"):
+            user = self.caller.account
+            character = self.caller
+        elif hasattr(self.caller, "at_post_login"):
+            user = self.caller
+            character = None
+        req_kwargs = {"user": user, "character": character}
+        req_kwargs.update(kwargs)
+        return Request(**req_kwargs)
 
     def request_message(self, request):
         if message := request.results.get("message", ""):
@@ -42,6 +54,7 @@ class _AthanorCommandMixin:
 
     def msg_lines(self, out: list):
         self.msg("\n".join([str(o) for o in out]))
+
 
 class AthanorCommand(_AthanorCommandMixin, MuxCommand):
     """

@@ -210,6 +210,7 @@ class Request:
         self.status: status = status.HTTP_200_OK
         self.results = dict()
         self.system_name = getattr(self.target, "system_name", "SYSTEM")
+        self.actor = self.character or self.user
 
     def error(self, message: str):
         """

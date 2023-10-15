@@ -108,9 +108,16 @@ def _apply_settings(settings):
         "PositiveInteger",
         settings.CLIENT_DEFAULT_WIDTH
     )
-    # ROOT_URLCONF = "athanor.urls"
 
     settings.ALERTS_CHANNELS = "MudInfo"
+    settings.ROOT_URLCONF = "athanor.urls"
+
+    settings.URL_INCLUDES = [
+        ("", "web.website.urls"),
+        ("webclient/", "web.webclient.urls"),
+        ("admin/", "web.admin.urls"),
+        ("athanor/", "athanor.website.urls"),
+    ]
 
 
 def init(settings, plugins=None):

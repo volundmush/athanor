@@ -1,5 +1,5 @@
 from django.urls import path, include
 
 urlpatterns = [
-    path("api", include("athanor.web.api")),
+    #path("api", include("athanor.website.api")),
 ]
