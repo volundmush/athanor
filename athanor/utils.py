@@ -211,6 +211,7 @@ class Request:
         self.results = dict()
         self.system_name = getattr(self.target, "system_name", "SYSTEM")
         self.actor = self.character or self.user
+        self.variables = dict()
 
     def error(self, message: str):
         """
@@ -230,10 +231,12 @@ class Request:
                 raise Exception("No user provided.")
             if not (method := getattr(self.target, f"op_{self.operation}", None)):
                 raise Exception(f"No such operation: {self.operation}")
-            if hasattr(self.target, "prepare_kwargs"):
-                self.target.prepare_kwargs(self)
+            if hasattr(self.target, "prepare_variables"):
+                self.target.prepare_variables(self)
             method(self)
             self.results.update({"success": True})
+            if hasattr(self.target, "at_post_operation"):
+                self.target.at_post_operation(self)
         except self.ex as err:
             error = str(err)
             self.results.update({"success": False, "error": error, "message": error})
