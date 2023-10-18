@@ -231,8 +231,8 @@ class Request:
                 raise Exception("No user provided.")
             if not (method := getattr(self.target, f"op_{self.operation}", None)):
                 raise Exception(f"No such operation: {self.operation}")
-            if hasattr(self.target, "prepare_variables"):
-                self.target.prepare_variables(self)
+            if hasattr(self.target, "at_pre_operation"):
+                self.target.at_pre_operation(self)
             method(self)
             self.results.update({"success": True})
             if hasattr(self.target, "at_post_operation"):

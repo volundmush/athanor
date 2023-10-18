@@ -1,6 +1,9 @@
 from django.conf import settings
 from evennia.commands.default.muxcommand import MuxCommand, MuxAccountCommand
 from athanor.utils import Request
+from rich.table import Table
+from rich.box import ASCII2
+from rich.console import Group
 
 
 class _AthanorCommandMixin:
@@ -52,9 +55,24 @@ class _AthanorCommandMixin:
             return self.account.styled_separator(*args, **kwargs)
         return super().styled_separator(*args, **kwargs)
 
+    def rich_table(self, *args, **kwargs) -> Table:
+        if self.account:
+            return self.account.rich_table(*args, **kwargs)
+        real_kwargs = {
+            "box": ASCII2,
+            "border_style": "magenta",
+            "header_style": "bold",
+            "title_style": "bold",
+            "expand": True,
+        }
+        real_kwargs.update(kwargs)
+        return Table(*args, **real_kwargs)
+
     def msg_lines(self, out: list):
         self.msg("\n".join([str(o) for o in out]))
 
+    def msg_group(self, *args, **kwargs):
+        self.msg(rich=Group(*args, **kwargs))
 
 class AthanorCommand(_AthanorCommandMixin, MuxCommand):
     """

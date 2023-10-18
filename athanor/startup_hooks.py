@@ -30,6 +30,9 @@ def at_server_start():
     This is called every time the server starts up, regardless of
     how it was shut down.
     """
+    #from athanor.mudrich import install_mudrich
+    #install_mudrich()
+
     from evennia.utils import callables_from_module, class_from_module
     from django.conf import settings
     import athanor

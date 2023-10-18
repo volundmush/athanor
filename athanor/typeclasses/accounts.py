@@ -6,6 +6,8 @@ from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
 import athanor
 from .mixin import AthanorLowBase
+from rich.table import Table
+from rich.box import ASCII2
 
 
 class AthanorAccount(AthanorLowBase, DefaultAccount):
@@ -78,6 +80,17 @@ class AthanorAccount(AthanorLowBase, DefaultAccount):
             **kwargs,
         )
         return table
+
+    def rich_table(self, *args, **kwargs) -> Table:
+        real_kwargs = {
+            "box": ASCII2,
+            "border_style": self.options.get("rich_border_style"),
+            "header_style": self.options.get("rich_header_style"),
+            "title_style": self.options.get("rich_header_style"),
+            "expand": True,
+        }
+        real_kwargs.update(kwargs)
+        return Table(*args, **real_kwargs)
 
     def _render_decoration(
             self,
