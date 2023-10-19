@@ -1,9 +1,11 @@
 from rich.color import ColorSystem
 from django.conf import settings
-from evennia.server.sessionhandler import ServerSessionHandler, codecs_decode, _ERR_BAD_UTF8,\
-    _FUNCPARSER_PARSE_OUTGOING_MESSAGES_ENABLED, is_iter
 from evennia.server.serversession import ServerSession
-from evennia.utils.utils import lazy_property, logger
+from evennia.utils.utils import lazy_property
+from rich.highlighter import ReprHighlighter
+from rich.traceback import Traceback
+from rich.box import ASCII2
+
 
 _FUNCPARSER = None
 
@@ -63,13 +65,31 @@ class AthanorServerSession(ServerSession):
         """
         A thin wrapper around Rich.Console's print. Returns the exported data.
         """
-        self.console.print(*args, highlight=False, **kwargs)
+        new_kwargs = {
+            "highlight": False
+        }
+        new_kwargs.update(kwargs)
+        self.console.print(*args, **new_kwargs)
         return self.console.export_text(clear=True, styles=True)
 
     def data_out(self, **kwargs):
         """
         A second check to ensure that all uses of "rich" are getting processed properly.
         """
+        if "text" in kwargs:
+            t = kwargs.get("text", None)
+            if isinstance(t, (list, tuple)):
+                text, options = t
+                if options.get("type", None) == "py_output":
+                    del kwargs["text"]
+                    kwargs["rich"] = self.console.render_str(text, highlighter=ReprHighlighter())
+
+        if kwargs.pop("traceback", False):
+            print("THIS IS HAPPENING")
+            tb = Traceback(show_locals=True)
+            tb.box = ASCII2
+            kwargs["rich"] = tb
+
         if (r := kwargs.get("rich", None)) and hasattr(r, "__rich_console__"):
             kwargs["rich"] = self.print(r)
         super().data_out(**kwargs)

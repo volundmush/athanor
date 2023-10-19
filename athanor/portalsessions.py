@@ -1,9 +1,8 @@
-from django.conf import settings
 from evennia.server.portal.telnet import TelnetProtocol
 from evennia.server.portal.ssh import SshProtocol
 from evennia.server.portal.webclient import WebSocketClient
-from evennia.utils.utils import lazy_property
 from athanor.ansi import RavensGleaning
+
 
 class PortalSessionMixin:
 
