@@ -21,7 +21,7 @@ class AthanorServerSession(ServerSession):
         if "SCREENWIDTH" in self.protocol_flags:
             width = self.protocol_flags["SCREENWIDTH"][0]
         else:
-            width = 78
+            width = settings.CLIENT_DEFAULT_WIDTH
         return MudConsole(color_system=self.rich_color_system(), width=width,
                           file=self, record=True)
 
@@ -39,7 +39,7 @@ class AthanorServerSession(ServerSession):
         if "SCREENWIDTH" in self.protocol_flags:
             check._width = self.protocol_flags["SCREENWIDTH"][0]
         else:
-            check._width = 80
+            check._width = settings.CLIENT_DEFAULT_WIDTH
         if self.protocol_flags.get("NOCOLOR", False):
             check._color_system = None
         elif self.protocol_flags.get("XTERM256", False):

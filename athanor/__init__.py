@@ -134,6 +134,7 @@ def _apply_settings(settings):
         ("admin/", "web.admin.urls"),
         ("athanor/", "athanor.website.urls"),
     ]
+
     settings.SERVER_SESSION_CLASS = "athanor.serversession.AthanorServerSession"
 
     settings.TELNET_PROTOCOL_CLASS = "athanor.portalsessions.PlainTelnet"

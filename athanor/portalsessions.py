@@ -1,10 +1,14 @@
+from django.conf import settings
 from evennia.server.portal.telnet import TelnetProtocol
 from evennia.server.portal.ssh import SshProtocol
 from evennia.server.portal.webclient import WebSocketClient
-from ansi2html import Ansi2HTMLConverter
-
+from evennia.utils.utils import lazy_property
+from athanor.ansi import RavensGleaning
 
 class PortalSessionMixin:
+
+    def at_portal_sync(self):
+        pass
 
     def send_rich(self, *args, **kwargs):
         """
@@ -15,7 +19,7 @@ class PortalSessionMixin:
             return
         if not isinstance(args[0], str):
             return
-        options = kwargs.get("options", dict())
+        options = dict(kwargs.get("options", dict()))
         options["raw"] = True
         kwargs["options"] = options
         self.send_text(*args, **kwargs)
@@ -37,7 +41,7 @@ class SSHProtocol(PortalSessionMixin, SshProtocol):
 
 
 class WebSocket(PortalSessionMixin, WebSocketClient):
-    converter = Ansi2HTMLConverter()
+    converter = RavensGleaning()
 
     def send_rich(self, *args, **kwargs):
         if not args:
@@ -47,7 +51,9 @@ class WebSocket(PortalSessionMixin, WebSocketClient):
         html = self.converter.convert(args[0])
         new_args = [html]
         new_args.extend(args[1:])
-        options = kwargs.get("options", dict())
+        options = dict(kwargs.get("options", dict()))
         options["raw"] = True
+        options["client_raw"] = True
         kwargs["options"] = options
+
         self.send_text(*new_args, **kwargs)

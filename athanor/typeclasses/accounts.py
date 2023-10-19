@@ -90,6 +90,8 @@ class AthanorAccount(AthanorLowBase, DefaultAccount):
             "expand": True,
         }
         real_kwargs.update(kwargs)
+        if self.uses_screenreader():
+            real_kwargs["box"] = None
         return Table(*args, **real_kwargs)
 
     def _render_decoration(
