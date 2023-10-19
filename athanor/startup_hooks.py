@@ -23,11 +23,9 @@ def at_server_init():
     This is called first as the server is starting up, regardless of how.
     """
     from evennia.commands import cmdhandler
-    from athanor.error import _msg_err, __rich_console__
+    from athanor.error import _msg_err
 
     cmdhandler._msg_err = _msg_err
-    from rich.traceback import Traceback
-    Traceback.__rich_console__ = __rich_console__
 
 
 def at_server_start():

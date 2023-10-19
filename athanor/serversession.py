@@ -3,9 +3,9 @@ from django.conf import settings
 from evennia.server.serversession import ServerSession
 from evennia.utils.utils import lazy_property
 from rich.highlighter import ReprHighlighter
-from rich.traceback import Traceback
 from rich.box import ASCII2
-
+from rich.markdown import Markdown
+from athanor.error import AthanorTraceback
 
 _FUNCPARSER = None
 
@@ -84,9 +84,12 @@ class AthanorServerSession(ServerSession):
                     del kwargs["text"]
                     kwargs["rich"] = self.console.render_str(text, highlighter=ReprHighlighter())
 
+        if md := kwargs.pop("markdown", None):
+            kwargs["rich"] = Markdown(md)
+
         if kwargs.pop("traceback", False):
             print("THIS IS HAPPENING")
-            tb = Traceback(show_locals=True)
+            tb = AthanorTraceback(show_locals=True)
             tb.box = ASCII2
             kwargs["rich"] = tb
 
