@@ -244,4 +244,6 @@ class Request:
         except Exception as err:
             error = f"{str(err)} (Something went very wrong. Please alert staff.)"
             self.results.update({"success": False, "error": error, "message": error})
+            if settings.IN_GAME_ERRORS or self.actor.is_admin():
+                self.actor.msg(traceback=True)
             return

@@ -142,6 +142,22 @@ def _apply_settings(settings):
     settings.SSH_PROTOCOL_CLASS = "athanor.portalsessions.SSHProtocol"
     settings.WEBSOCKET_PROTOCOL_CLASS = "athanor.portalsessions.WebSocket"
 
+    settings.DJANGO_ADMIN_APP_ORDER = [
+        "accounts",
+        "objects",
+        "scripts",
+        "comms",
+        "help",
+        "typeclasses",
+        "server",
+        "sites",
+        "flatpages",
+        "auth",
+    ]
+
+    settings.DJANGO_ADMIN_APP_EXCLUDE = [
+        "account"
+    ]
 
 def init(settings, plugins=None):
     _apply_settings(settings)

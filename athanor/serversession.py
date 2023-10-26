@@ -82,13 +82,12 @@ class AthanorServerSession(ServerSession):
                 text, options = t
                 if options.get("type", None) == "py_output":
                     del kwargs["text"]
-                    kwargs["rich"] = self.console.render_str(text, highlighter=ReprHighlighter())
+                    kwargs["rich"] = self.console.render_str(text, markup=False, highlight=True, highlighter=ReprHighlighter())
 
         if md := kwargs.pop("markdown", None):
             kwargs["rich"] = Markdown(md)
 
         if kwargs.pop("traceback", False):
-            print("THIS IS HAPPENING")
             tb = AthanorTraceback(show_locals=True)
             tb.box = ASCII2
             kwargs["rich"] = tb

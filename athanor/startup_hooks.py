@@ -17,6 +17,16 @@ at_server_cold_stop()
 
 """
 
+def web_admin_apps(self, request, app_label=None):
+    from django.conf import settings
+    app_list = super().get_app_list(request, app_label=app_label)
+    app_mapping = {app["app_label"]: app for app in app_list}
+    out = [app_mapping.pop(app_label) for app_label in settings.DJANGO_ADMIN_APP_ORDER if app_label in app_mapping]
+    for app in settings.DJANGO_ADMIN_APP_EXCLUDE:
+        app_mapping.pop(app, None)
+    out += app_mapping.values()
+    return out
+
 
 def at_server_init():
     """
@@ -26,6 +36,8 @@ def at_server_init():
     from athanor.error import _msg_err
 
     cmdhandler._msg_err = _msg_err
+    from evennia.web.utils.adminsite import EvenniaAdminSite
+    EvenniaAdminSite.get_all_apps = web_admin_apps
 
 
 def at_server_start():
