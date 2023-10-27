@@ -19,7 +19,8 @@ at_server_cold_stop()
 
 def web_admin_apps(self, request, app_label=None):
     from django.conf import settings
-    app_list = super().get_app_list(request, app_label=app_label)
+    from django.contrib import admin
+    app_list = admin.AdminSite.get_app_list(self, request, app_label=app_label)
     app_mapping = {app["app_label"]: app for app in app_list}
     out = [app_mapping.pop(app_label) for app_label in settings.DJANGO_ADMIN_APP_ORDER if app_label in app_mapping]
     for app in settings.DJANGO_ADMIN_APP_EXCLUDE:
