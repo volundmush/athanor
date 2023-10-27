@@ -37,7 +37,7 @@ def at_server_init():
 
     cmdhandler._msg_err = _msg_err
     from evennia.web.utils.adminsite import EvenniaAdminSite
-    EvenniaAdminSite.get_all_apps = web_admin_apps
+    EvenniaAdminSite.get_app_list = web_admin_apps
 
 
 def at_server_start():
