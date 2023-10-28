@@ -2,7 +2,7 @@ import typing
 from .mixin import AthanorBase
 from django.conf import settings
 from evennia.objects.objects import DefaultCharacter, DefaultObject
-from athanor import CHARACTERS_ONLINE
+import athanor
 from athanor.utils import utcnow
 
 
@@ -49,7 +49,6 @@ class AthanorPlayerCharacter(AthanorCharacter):
     def at_object_creation(self):
         super().at_object_creation()
         self.db.total_playtime = 0
-        self.db.is_online = False
         self.db.last_login = None
         self.db.last_logout = None
         self.db.last_activity = None
@@ -59,6 +58,8 @@ class AthanorPlayerCharacter(AthanorCharacter):
         """
         Calculates total playtime in seconds.
         """
+        if not self.db.last_login:
+            return 0
         tdelta = utcnow() - self.db.last_login
         return self.db.total_playtime + int(tdelta.total_seconds())
 
@@ -74,14 +75,12 @@ class AthanorPlayerCharacter(AthanorCharacter):
         For custom game logic, it is recommended to overload at_login()
         instead of this method.
         """
-        if not self.db.is_online:
-            self.db.is_online = True
+        if self.sessions.count() == 1:
             # Add to the CHARACTERS_ONLINE set for easy indexing of who list and
             # activity tracking.
-            CHARACTERS_ONLINE.add(self)
+            athanor.CHARACTERS_ONLINE.add(self)
             n = utcnow()
             self.db.last_login = n
-            self.db.last_activity = n
             self.db.last_online = n
             self.at_login()
         else:
@@ -125,7 +124,9 @@ class AthanorPlayerCharacter(AthanorCharacter):
 
     def stow(self):
         # this should ALWAYS be true, but in case something weird's going on...
-        if self.location:
-            self.db.prelogout_location = self.location
-            self.location.at_object_leave(self, None)
-            self.location = None
+        if not self.location:
+            return
+
+        self.db.prelogout_location = self.location
+        self.location.at_object_leave(self, None)
+        self.location = None

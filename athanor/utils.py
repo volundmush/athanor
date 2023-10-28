@@ -239,11 +239,11 @@ class Request:
                 self.target.at_post_operation(self)
         except self.ex as err:
             error = str(err)
-            self.results.update({"success": False, "error": error, "message": error})
+            self.results.update({"success": False, "error": True, "message": error})
             return
         except Exception as err:
             error = f"{str(err)} (Something went very wrong. Please alert staff.)"
-            self.results.update({"success": False, "error": error, "message": error})
+            self.results.update({"success": False, "error": True, "message": error})
             if settings.IN_GAME_ERRORS or self.actor.is_admin():
                 self.actor.msg(traceback=True)
             return
