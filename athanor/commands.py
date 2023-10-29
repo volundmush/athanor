@@ -9,13 +9,17 @@ from rich.console import Group
 class _AthanorCommandMixin:
 
     def request(self, **kwargs) -> Request:
+        user = None
+        character = None
         if hasattr(self.caller, "account"):
             user = self.caller.account
             character = self.caller
         elif hasattr(self.caller, "at_post_login"):
             user = self.caller
             character = None
-        req_kwargs = {"user": user, "character": character}
+        req_kwargs = {"user": user}
+        if character:
+            req_kwargs["character"] = character
         req_kwargs.update(kwargs)
         return Request(**req_kwargs)
 
@@ -56,6 +60,10 @@ class _AthanorCommandMixin:
         return super().styled_separator(*args, **kwargs)
 
     def rich_table(self, *args, **kwargs) -> Table:
+        """
+        Creates and returns a ready-made Rich Table with the given arguments,
+        pre-stylized. This is a fancy wrapper for convenience.
+        """
         if self.account:
             return self.account.rich_table(*args, **kwargs)
         real_kwargs = {
@@ -69,10 +77,18 @@ class _AthanorCommandMixin:
         return Table(*args, **real_kwargs)
 
     def msg_lines(self, out: list):
+        """
+        A shorthand for sending a list of strings to the user.
+        """
         self.msg("\n".join([str(o) for o in out]))
 
     def msg_group(self, *args, **kwargs):
+        """
+        A simple method that wraps up sending a rich.console.Group over
+        self.msg() for convenience.
+        """
         self.msg(rich=Group(*args, **kwargs))
+
 
 class AthanorCommand(_AthanorCommandMixin, MuxCommand):
     """

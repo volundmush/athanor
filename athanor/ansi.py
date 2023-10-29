@@ -417,4 +417,3 @@ class RavensGleaning:
             ret += "</span>"
 
         return ret
-

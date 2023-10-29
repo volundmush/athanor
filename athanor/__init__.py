@@ -159,6 +159,8 @@ def _apply_settings(settings):
         "account"
     ]
 
+    settings.HELP_MORE_ENABLED = False
+
 def init(settings, plugins=None):
     _apply_settings(settings)
 

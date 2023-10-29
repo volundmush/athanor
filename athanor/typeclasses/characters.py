@@ -1,9 +1,9 @@
 import typing
-from .mixin import AthanorBase
 from django.conf import settings
 from evennia.objects.objects import DefaultCharacter, DefaultObject
 import athanor
 from athanor.utils import utcnow
+from .mixin import AthanorBase
 
 
 class AthanorCharacter(AthanorBase, DefaultCharacter):

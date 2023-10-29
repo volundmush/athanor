@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
+from rich.text import Text
+from rich.ansi import AnsiDecoder
 from django.conf import settings
 from rest_framework import status
 from evennia import SESSION_HANDLER
@@ -247,3 +249,11 @@ class Request:
             if settings.IN_GAME_ERRORS or self.actor.is_admin():
                 self.actor.msg(traceback=True)
             return
+
+
+def ev_to_rich(text: str):
+    """
+    Converts an Evennia ANSIString to a Rich Text.
+    """
+    ev = parse_ansi(str(text), xterm256=True, mxp=True)
+    return Text("\n").join(AnsiDecoder().decode(ev))
