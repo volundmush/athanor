@@ -1,7 +1,7 @@
-# Athanor - Some hammering for Evennia
+# Athanor - Alchemical Wizardry for Evennia
 
-## WARNING: Early Alpha!
-Pardon our dust, this project is still in its infancy. It runs, but if you're not a developer intent on sprucing up, it may not have much for you just yet.
+## WARNING:  Alpha!
+Pardon our dust, this project is heavily WIP. It runs, but is unstable and subject to substantial changes.
 
 ## CONTACT INFO
 **Name:** Volund
@@ -10,13 +10,13 @@ Pardon our dust, this project is still in its infancy. It runs, but if you're no
 
 **PayPal:** volundmush@gmail.com
 
-**Discord:** Volund#1206  
+**Discord:** VolundMush  
 
 **Discord Channel:** https://discord.gg/Sxuz3QNU8U
 
 **Patreon:** https://www.patreon.com/volund
 
-**Home Repository:** https://github.com/volundmush/mudforge
+**Home Repository:** https://github.com/volundmush/athanor
 
 ## TERMS AND CONDITIONS
 
@@ -27,44 +27,114 @@ Please see the included LICENSE.txt for the legalese.
 ## INTRO
 MUDs and their brethren are the precursors to our modern MMORPGs, and are still a blast to play - in addition to their other uses, such as educative game design: all the game logic, none of the graphics!
 
-Writing one from scratch isn't easy though, so this library aims to take away a great deal of the boilerplate pain.
+Evennia does a splendid job at providing the barebones basics of getting a MUD-like server up and running quickly, but in my opinion, it is lacking certain amenities, features, and niceties which many games will all want to have.
 
-MudForge provides a dual-process Application framework and a launcher, where each and every piece of the program is meant to be inherited and overloaded by another developer's efforts. The MudGate process holds onto clients and communicates with the MudForge process over local private networking, allowing the game to reboot - and apply updates - without disconnecting clients.
+Thus, Athanor is here to provide a higher-level SDK atop of Evennia, where new features can be written as plugins and easily added to any existing project using Athanor.
 
-This library isn't a MUD. It's not a MUSH, or a MUX, or a MOO, or MUCK on its own, though. In truth, it doesn't DO very much. That's a good thing! See, it doesn't make (many) decisions for the developers it's meant for, making it easy to build virtually ANY kind of text-based multiplayer game atop of it.
+The majority of my vision is based on experience from working with RPI MUDs and roleplay-themepark MUSHes and so much of the code will be built with those in mind.
 
 ## FEATURES
-  * Extensive Telnet Support
-  * Extendable Protocol Framework
+  * Plugin Framework with composable settings...
+  * ... and many starting plugins!
   * Amazing ANSI and other Text Formatting powered by [Rich](https://github.com/willmcgugan/rich)
+  * Easy installation.
+  * Event Emitter
+  * Utility functions.
+  * Composable CmdSets
+  * Extended Options/Style System.
 
-## UNFINISHED FEATURES
-  * TLS Support
-  * WebSocket Support
-  * SSH Support
-  * Integrated WebClient
+## OFFICIAL PLUGINS
+  * A Myrrdin-style [BBS](https://github.com/volundmush/athanor_boards) with Board Collections and prefixes.
+  * Django-wiki integration via [Wiki](https://github.com/volundmush/athanor_wiki)
+  * Django-helpdesk integration via [Helpdesk](https://github.com/volundmush/athanor_helpdesk)
+  * Tabletop game packages such as [Storyteller](https://github.com/volundmush/storyteller) (WoD, Exalted, etc)
+  * A [Login Tracker](https://github.com/volundmush/athanor_login) that keeps track of who's logging in from where, when.
 
 
 ## OKAY, BUT HOW DO I USE IT?
 Glad you asked!
 
-You can install MudForge using ```pip install git+git://github.com/volundmush/mudforge```
+First, you'll need to install Evennia and create a game folder for your specific game. You can find instructions for that [here](https://www.evennia.com/docs/latest/Setup/Installation.html)
 
-This adds the `mudforge` command to your shell. use `mudforge --help` to see what it can do.
+Then, you can install athanor using ```pip install git+git://github.com/volundmush/athanor```
 
-The way that athanor and projects built on it work:
+Once it's installed, you will need to modify your settings.py to include the following section:
 
-`mudforge --init <folder>` will create a folder that contains your game's configuration, save files, database, and possibly some code. Enter the folder and use `mudforge start` and `mudforge stop` to control it. you can use `--app mudgate` or `--app mudforge` to start/stop specific programs.
+```python
+import athanor as _athanor, sys as _sys
+_athanor.init(_sys.modules[__name__], plugins=[
 
-Examine the profile folder's .yaml files to learn how to change the server's configuration around.
+])
+```
+Notice the empty list. that should contain a list of strings naming Python modules which are compatible as plugins.
+for instance,
 
-Again, though, it doesn't do much...
+```python
+import athanor as _athanor, sys as _sys
+_athanor.init(_sys.modules[__name__], plugins=[
+    "athanor_boards",
+    "athanor_wiki",
+    "athanor_helpdesk",
+])
+```
+
+The section should be directly below `from evennia.settings_default import *` and precede all other settings entries. This way, anything defined in plugins can be overriden further down in settings.py.
 
 ## OKAAAAAAY, SO HOW DO I -REALLY- USE IT?
-The true power of MudForge is in its extendability. Because you can replace any and all classes the program uses for its startup routines, and the launcher itself is a class, it's easy-peasy to create a whole new library with its own command-based launcher and game template that the launcher creates a skeleton of with `--init <folder>`.
+The true power of Athanor is in making plugins. Athanor on its own doesn't do too much. But here are some of the things to keep in mind.
 
-Not gonna lie though - that does need some Python skills.
+### PLUGINS
+A plugin is a Python module which is accessible on your Python path. The module must define an `init(settings, plugins: dict)` method which will be called during Athanor startup. Check out athanor's own `__init__.py` to see how it's called.
 
+### SETTINGS
+This `init()` method will be passed a reference to the settings module, and a dictionary of plugins which are being loaded. Evennia's settings can be adjusted using `settings.BLAH = Whatever`. Be careful not to import anything which would bork `django.setup()` - it's best to work with simple data primitives.
+
+Be careful to APPEND/EXTEND/INSERT INTO existing lists rather than outright replacing them, such as INSTALLED_APPS.
+
+### DATABASE
+Some Athanor Plugins may modify INSTALLED_APPS and require you to run `evennia migrate`
+
+### COMMANDS
+Athanor provides an AthanorCommand class subclassed from MuxCommand, which adds a bunch of new features such as auto-styled Rich tables and message dispatch convenience wrappers. Do check it out!
+
+### CMDSETS
+You know what I find annoying? Having to import a command module and then add all of its commands to a cmdset. Most of the time, the default cmdsets just need to have more commands piled onto them.
+
+To make adding commands easier, Athanor's settings provide the `CMD_MODULES_<type>` lists, like `CMD_MODULES_ACCOUNT`.
+
+Any Python modules added to this list will have their commands added to the respective default cmdsets by default.
+
+NOTE: This is done via `evennia.utils.utils.callables_from_module`, which extracts all callables defined in a module (not imported) that do not begin with a _. These modules should NOT contain any other classes or functions, unless they begin with an underscore.
+
+### EVENT EMITTER
+This is honestly quite simple.
+
+```python
+from athanor import emit, register_event, unregister_event
+
+def my_event_handler(*args, **kwargs):
+    print(f"I got called! {args}")
+
+register_event("my_event", my_event_handler)
+
+emit("my_event", "boo")
+
+unregister_event("my_event", my_event_handler)
+```
+
+It's up to you how to use this. Great way to decouple code across plugins.
+
+### RICH INTEGRATION
+Each ServerSession has its own rich.console.Console instance configured to use Evennia's client width and color settings for that session.
+
+`ServerSession.data_out(**kwargs)` has been modified to respond to some very special kwargs, as follows:
+  * rich=\<renderable\> - This will render the renderable and send it to the client.
+  * markdown=\<str\> - This will render the markdown and send it to the client. Note that some markdown features are not supported; it's telnet, after all.
+  * traceback=True - This will render the traceback of the current exception and send it to the client.
+
+Only one of these kwargs should be used at a time. If more than one is used, the last one will be used.
+
+`ServerSession.data_out(**kwargs)` is eventually called by all variants of .msg() on Objects, Accounts, Sessions, and Commands, so, in a command, this could be used with `self.msg(rich=blah)`
 
 ## FAQ 
   __Q:__ This is cool! How can I help?  
@@ -73,7 +143,10 @@ Not gonna lie though - that does need some Python skills.
   __Q:__ I found a bug! What do I do?  
   __A:__ Post it on this GitHub's Issues tracker. I'll see what I can do when I have time. ... or you can try to fix it yourself and submit a Pull Request. That's cool too.
 
+  __Q:__ The heck is an Athanor? Why name something this?
+  __A:__ An Athanor is a furnace used in alchemy. It's a place where things are forged and refined. I thought it was a fitting name for a library that's meant to be used to build other things.
+
 ## Special Thanks
-  * The Evennia Project. A bit of code's yoinked from them, and the dual-process idea for Portal+Server is definitely from them.
+  * The Evennia Project.
   * All of my Patrons on Patreon.
   * Anyone who contributes to this project or my other ones.
