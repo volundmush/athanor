@@ -190,16 +190,16 @@ def online_characters():
     return search_tag(key="puppeted", category="account")
 
 
-class RequestError(ValueError):
+class OperationError(ValueError):
     pass
 
 
-class Request:
+class Operation:
     """
     Class used to handle requests against Athanor API objects to reduce boilerplate.
     """
 
-    ex = RequestError
+    ex = OperationError
     st = status
 
     def __init__(self, target, **kwargs):
@@ -242,13 +242,11 @@ class Request:
         except self.ex as err:
             error = str(err)
             self.results.update({"success": False, "error": True, "message": error})
-            return
         except Exception as err:
             error = f"{str(err)} (Something went very wrong. Please alert staff.)"
             self.results.update({"success": False, "error": True, "message": error})
             if settings.IN_GAME_ERRORS or self.actor.is_admin():
                 self.actor.msg(traceback=True)
-            return
 
 
 def ev_to_rich(text: str):

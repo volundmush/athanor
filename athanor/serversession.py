@@ -92,8 +92,14 @@ class AthanorServerSession(ServerSession):
             tb.box = ASCII2
             kwargs["rich"] = tb
 
-        if (r := kwargs.get("rich", None)) and hasattr(r, "__rich_console__"):
-            kwargs["rich"] = self.print(r)
+        if (r := kwargs.get("rich", None)):
+            options = None
+            if isinstance(r, (list, tuple)):
+                ri, options = r
+            else:
+                ri = r
+            printed = self.print(ri)
+            kwargs["rich"] = (printed, options) if options else printed
         super().data_out(**kwargs)
 
     def load_sync_data(self, sessdata):

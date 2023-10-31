@@ -1,14 +1,70 @@
-from django.conf import settings
+from evennia.utils.utils import lazy_property
 from evennia.commands.default.muxcommand import MuxCommand, MuxAccountCommand
-from athanor.utils import Request
+from athanor.utils import Operation, ev_to_rich
 from rich.table import Table
 from rich.box import ASCII2
 from rich.console import Group
 
 
+class OutputBuffer:
+    """
+    This class manages output for aggregating Rich printables (it can also accept ANSIStrings and strings
+    with Evennia's markup) and sending them to the user in a single message. It's used by the AthanorCommand
+    as a major convenience.
+    """
+
+    def __init__(self, method):
+        self.method = method.msg if hasattr(method, "msg") else method
+        self.buffer = list()
+        self.dict = dict()
+
+    def append(self, obj):
+        if isinstance(obj, str):
+            self.buffer.append(ev_to_rich(obj))
+        elif hasattr(obj, "__rich_console__"):
+            self.buffer.append(obj)
+        else:
+            self.buffer.append(ev_to_rich(str(obj)))
+
+    def __getitem__(self, key):
+        return self.dict[key]
+
+    def __setitem__(self, key, value):
+        self.dict[key] = value
+
+    def __delitem__(self, key):
+        del self.dict[key]
+
+    def reset(self):
+        self.buffer.clear()
+        self.dict.clear()
+
+    def flush(self):
+        if not self.buffer:
+            return
+        group = Group(*self.buffer) if len(self.buffer) > 1 else self.buffer[0]
+        value = {"rich": (group, self.dict) if self.dict else group}
+        self.method(**value)
+        self.reset()
+
+
 class _AthanorCommandMixin:
 
-    def request(self, **kwargs) -> Request:
+    def create_buffer(self, method=None):
+        if not method:
+            method = self.msg
+        return OutputBuffer(method)
+
+    @lazy_property
+    def buffer(self):
+        self._buffer_created = True
+        return self.create_buffer()
+
+    def at_post_cmd(self):
+        if getattr(self, "_buffer_created", False):
+            self.buffer.flush()
+
+    def operation(self, **kwargs) -> Operation:
         user = None
         character = None
         if hasattr(self.caller, "account"):
@@ -21,10 +77,10 @@ class _AthanorCommandMixin:
         if character:
             req_kwargs["character"] = character
         req_kwargs.update(kwargs)
-        return Request(**req_kwargs)
+        return Operation(**req_kwargs)
 
-    def request_message(self, request):
-        if message := request.results.get("message", ""):
+    def op_message(self, operation):
+        if message := operation.results.get("message", ""):
             self.msg(message)
 
     def client_width(self):
@@ -81,13 +137,6 @@ class _AthanorCommandMixin:
         A shorthand for sending a list of strings to the user.
         """
         self.msg("\n".join([str(o) for o in out]))
-
-    def msg_group(self, *args, **kwargs):
-        """
-        A simple method that wraps up sending a rich.console.Group over
-        self.msg() for convenience.
-        """
-        self.msg(rich=Group(*args, **kwargs))
 
 
 class AthanorCommand(_AthanorCommandMixin, MuxCommand):
