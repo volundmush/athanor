@@ -5,7 +5,6 @@ from athanor.ansi import RavensGleaning
 
 
 class PortalSessionMixin:
-
     def at_portal_sync(self):
         pass
 
@@ -29,7 +28,6 @@ class PlainTelnet(PortalSessionMixin, TelnetProtocol):
 
 
 class SecureTelnet(PlainTelnet):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.protocol_key = "telnet/ssl"

@@ -11,12 +11,18 @@ from rich.constrain import Constrain
 from rich._loop import loop_last
 from rich.panel import Panel
 from rich.text import Text
-from rich.traceback import Traceback, PathHighlighter, render_scope, Stack, linecache, Frame
+from rich.traceback import (
+    Traceback,
+    PathHighlighter,
+    render_scope,
+    Stack,
+    linecache,
+    Frame,
+)
 from rich.traceback import Iterable, Columns, Syntax, Optional
 
 
 class AthanorTraceback(Traceback):
-
     @group()
     def _render_stack(self, stack: Stack) -> RenderResult:
         path_highlighter = PathHighlighter()
@@ -54,7 +60,6 @@ class AthanorTraceback(Traceback):
 
         excluded = False
         for frame_index, frame in enumerate(stack.frames):
-
             if exclude_frames and frame_index in exclude_frames:
                 excluded = True
                 continue
@@ -137,7 +142,7 @@ class AthanorTraceback(Traceback):
                     )
 
     def __rich_console__(
-            self, console: Console, options: ConsoleOptions
+        self, console: Console, options: ConsoleOptions
     ) -> RenderResult:
         theme = self.theme
         background_style = theme.get_background_style()
@@ -175,7 +180,7 @@ class AthanorTraceback(Traceback):
                     border_style="traceback.border",
                     expand=True,
                     padding=(0, 1),
-                    box=self.box
+                    box=self.box,
                 )
                 stack_renderable = Constrain(stack_renderable, self.width)
                 with console.use_theme(traceback_theme):
@@ -190,7 +195,7 @@ class AthanorTraceback(Traceback):
                             expand=True,
                             padding=(0, 1),
                             width=self.width,
-                            box=self.box
+                            box=self.box,
                         ),
                         self.width,
                     )
@@ -215,7 +220,6 @@ class AthanorTraceback(Traceback):
                     yield Text.from_markup(
                         "\n[i]During handling of the above exception, another exception occurred:\n",
                     )
-
 
 
 def _msg_err(receiver, stringtuple):
@@ -243,5 +247,3 @@ def _msg_err(receiver, stringtuple):
                 timestamp=timestamp,
             ).strip()
         )
-
-

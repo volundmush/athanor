@@ -174,7 +174,9 @@ def format_for_nobody(template: str, mapping: dict = None) -> str:
 def staff_alert(message: str, senders=None):
     from evennia.comms.comms import DefaultChannel
 
-    if not (channel := DefaultChannel.objects.filter(db_key=settings.ALERTS_CHANNEL).first()):
+    if not (
+        channel := DefaultChannel.objects.filter(db_key=settings.ALERTS_CHANNEL).first()
+    ):
         return
 
     channel.msg(message, senders=senders)
@@ -182,11 +184,13 @@ def staff_alert(message: str, senders=None):
 
 def online_accounts():
     from evennia import SESSION_HANDLER
+
     return SESSION_HANDLER.all_connected_accounts()
 
 
 def online_characters():
     from evennia import search_tag
+
     return search_tag(key="puppeted", category="account")
 
 
@@ -245,7 +249,7 @@ class Operation:
         except Exception as err:
             error = f"{str(err)} (Something went very wrong. Please alert staff.)"
             self.results.update({"success": False, "error": True, "message": error})
-            if settings.IN_GAME_ERRORS or self.actor.is_admin():
+            if settings.IN_GAME_ERRORS:
                 self.actor.msg(traceback=True)
 
 

@@ -4,7 +4,6 @@ from rich.errors import StyleSyntaxError
 
 
 class Style(BaseOption):
-
     def validate(self, value, **kwargs):
         try:
             style = _RichStyle.parse(value)

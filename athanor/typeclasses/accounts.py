@@ -1,19 +1,20 @@
 import math
 import datetime
+
 from django.conf import settings
 from evennia.accounts.accounts import DefaultAccount
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
-import athanor
-from .mixin import AthanorLowBase
+
 from rich.table import Table
 from rich.box import ASCII2
 
+import athanor
+from .mixin import AthanorLowBase
+
 
 class AthanorAccount(AthanorLowBase, DefaultAccount):
-
-    def is_admin(self) -> bool:
-        return self.locks.check_lockstring(self, "perm(Admin)")
+    lock_access_funcs = athanor.ACCOUNT_ACCESS_FUNCTIONS
 
     def uses_screenreader(self, session=None):
         return super().uses_screenreader(session=session) or self.options.get(
@@ -95,13 +96,13 @@ class AthanorAccount(AthanorLowBase, DefaultAccount):
         return Table(*args, **real_kwargs)
 
     def _render_decoration(
-            self,
-            header_text=None,
-            fill_character=None,
-            edge_character=None,
-            mode="header",
-            color_header=True,
-            width=None,
+        self,
+        header_text=None,
+        fill_character=None,
+        edge_character=None,
+        mode="header",
+        color_header=True,
+        width=None,
     ):
         """
         Helper for formatting a string into a pretty display, for a header, separator or footer.
@@ -132,15 +133,21 @@ class AthanorAccount(AthanorLowBase, DefaultAccount):
         if header_text:
             if color_header:
                 header_text = ANSIString(header_text).clean()
-                header_text = ANSIString("|n|%s%s|n" % (colors["headertext"], header_text))
+                header_text = ANSIString(
+                    "|n|%s%s|n" % (colors["headertext"], header_text)
+                )
             if mode == "header":
                 begin_center = ANSIString(
                     "|n|%s<|%s* |n" % (colors["border"], colors["headerstar"])
                 )
-                end_center = ANSIString("|n |%s*|%s>|n" % (colors["headerstar"], colors["border"]))
+                end_center = ANSIString(
+                    "|n |%s*|%s>|n" % (colors["headerstar"], colors["border"])
+                )
                 center_string = ANSIString(begin_center + header_text + end_center)
             else:
-                center_string = ANSIString("|n |%s%s |n" % (colors["headertext"], header_text))
+                center_string = ANSIString(
+                    "|n |%s%s |n" % (colors["headertext"], header_text)
+                )
         else:
             center_string = ""
 
@@ -154,14 +161,22 @@ class AthanorAccount(AthanorLowBase, DefaultAccount):
             right_width = math.floor(remain_fill / 2)
             left_width = math.ceil(remain_fill / 2)
 
-        right_fill = ANSIString("|n|%s%s|n" % (colors["border"], fill_character * int(right_width)))
-        left_fill = ANSIString("|n|%s%s|n" % (colors["border"], fill_character * int(left_width)))
+        right_fill = ANSIString(
+            "|n|%s%s|n" % (colors["border"], fill_character * int(right_width))
+        )
+        left_fill = ANSIString(
+            "|n|%s%s|n" % (colors["border"], fill_character * int(left_width))
+        )
 
         if edge_character:
             edge_fill = ANSIString("|n|%s%s|n" % (colors["border"], edge_character))
             main_string = ANSIString(center_string)
             final_send = (
-                    ANSIString(edge_fill) + left_fill + main_string + right_fill + ANSIString(edge_fill)
+                ANSIString(edge_fill)
+                + left_fill
+                + main_string
+                + right_fill
+                + ANSIString(edge_fill)
             )
         else:
             final_send = left_fill + ANSIString(center_string) + right_fill
@@ -194,7 +209,9 @@ class AthanorAccount(AthanorLowBase, DefaultAccount):
             kwargs["mode"] = "footer"
         return self._render_decoration(*args, **kwargs)
 
-    def datetime_format(self, dt: datetime.datetime = None, template: str = "%Y-%m-%d %H:%M:%S"):
+    def datetime_format(
+        self, dt: datetime.datetime = None, template: str = "%Y-%m-%d %H:%M:%S"
+    ):
         if not dt:
             dt = datetime.datetime.now()
         tz = self.options.get("timezone")

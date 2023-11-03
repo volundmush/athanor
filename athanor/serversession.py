@@ -15,17 +15,18 @@ _Select = None
 
 
 class AthanorServerSession(ServerSession):
-
     @lazy_property
     def console(self):
-        #from athanor.mudrich import MudConsole
+        # from athanor.mudrich import MudConsole
         from rich.console import Console as MudConsole
+
         if "SCREENWIDTH" in self.protocol_flags:
             width = self.protocol_flags["SCREENWIDTH"][0]
         else:
             width = settings.CLIENT_DEFAULT_WIDTH
-        return MudConsole(color_system=self.rich_color_system(), width=width,
-                          file=self, record=True)
+        return MudConsole(
+            color_system=self.rich_color_system(), width=width, file=self, record=True
+        )
 
     def rich_color_system(self):
         if self.protocol_flags.get("NOCOLOR", False):
@@ -65,9 +66,7 @@ class AthanorServerSession(ServerSession):
         """
         A thin wrapper around Rich.Console's print. Returns the exported data.
         """
-        new_kwargs = {
-            "highlight": False
-        }
+        new_kwargs = {"highlight": False}
         new_kwargs.update(kwargs)
         self.console.print(*args, **new_kwargs)
         return self.console.export_text(clear=True, styles=True)
@@ -82,7 +81,12 @@ class AthanorServerSession(ServerSession):
                 text, options = t
                 if options.get("type", None) == "py_output":
                     del kwargs["text"]
-                    kwargs["rich"] = self.console.render_str(text, markup=False, highlight=True, highlighter=ReprHighlighter())
+                    kwargs["rich"] = self.console.render_str(
+                        text,
+                        markup=False,
+                        highlight=True,
+                        highlighter=ReprHighlighter(),
+                    )
 
         if md := kwargs.pop("markdown", None):
             kwargs["rich"] = Markdown(md)
@@ -92,7 +96,7 @@ class AthanorServerSession(ServerSession):
             tb.box = ASCII2
             kwargs["rich"] = tb
 
-        if (r := kwargs.get("rich", None)):
+        if r := kwargs.get("rich", None):
             options = None
             if isinstance(r, (list, tuple)):
                 ri, options = r

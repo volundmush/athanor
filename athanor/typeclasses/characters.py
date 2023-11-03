@@ -11,6 +11,7 @@ class AthanorCharacter(AthanorBase, DefaultCharacter):
     Abstract base class for Athanor characters.
     Do not instantiate directly.
     """
+
     _content_types = ("character",)
 
     def at_pre_move(self, destination: typing.Optional[DefaultObject], **kwargs):
@@ -22,9 +23,17 @@ class AthanorCharacter(AthanorBase, DefaultCharacter):
             return True
 
         # Characters may only exist inside Rooms, Sectors, or Grids.
-        return any(ctype in destination._content_types for ctype in ("room", "grid", "sector"))
+        return any(
+            ctype in destination._content_types for ctype in ("room", "grid", "sector")
+        )
 
-    def at_object_receive(self, obj: DefaultObject, source_location: typing.Optional[DefaultObject], move_type="move", **kwargs):
+    def at_object_receive(
+        self,
+        obj: DefaultObject,
+        source_location: typing.Optional[DefaultObject],
+        move_type="move",
+        **kwargs,
+    ):
         """
         Called after an object has been moved into this object.
 
@@ -42,6 +51,7 @@ class AthanorPlayerCharacter(AthanorCharacter):
     Note that Athanor only supports PCs as direct Puppets. Use the 'possess' framework
     to allow PCs to control NPCs or other entities.
     """
+
     is_player = True
 
     _content_types = ("character", "player")
@@ -98,16 +108,22 @@ class AthanorPlayerCharacter(AthanorCharacter):
         """
         # this should ALWAYS be true, but in case something weird's going on...
         if self.location:
-            self.location.msg_contents(settings.ACTION_TEMPLATES.get("login"), exclude=[self], from_obj=self)
+            self.location.msg_contents(
+                settings.ACTION_TEMPLATES.get("login"), exclude=[self], from_obj=self
+            )
         else:
-            self.msg(f"\nYou become |c{self.get_display_name(self)}|n. Where are you, though?\n")
+            self.msg(
+                f"\nYou become |c{self.get_display_name(self)}|n. Where are you, though?\n"
+            )
 
     def at_post_unpuppet(self, account=None, session=None, **kwargs):
         if not self.sessions.count() or kwargs.get("shutdown", False):
             # Pulls from kwargs in case this is called by at_server_cold_boot
             self.db.last_logout = kwargs.get("last_logout", utcnow())
             tdelta = self.db.last_logout - self.db.last_login
-            self.db.total_playtime = self.db.total_playtime + int(tdelta.total_seconds())
+            self.db.total_playtime = self.db.total_playtime + int(
+                tdelta.total_seconds()
+            )
             self.at_logout()
 
     def at_logout(self):
@@ -120,7 +136,9 @@ class AthanorPlayerCharacter(AthanorCharacter):
     def announce_leave_game(self):
         # this should ALWAYS be true, but in case something weird's going on...
         if self.location:
-            self.location.msg_contents(settings.ACTION_TEMPLATES.get("logout"), exclude=[self], from_obj=self)
+            self.location.msg_contents(
+                settings.ACTION_TEMPLATES.get("logout"), exclude=[self], from_obj=self
+            )
 
     def stow(self):
         # this should ALWAYS be true, but in case something weird's going on...

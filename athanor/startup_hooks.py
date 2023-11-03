@@ -17,12 +17,18 @@ at_server_cold_stop()
 
 """
 
+
 def web_admin_apps(self, request, app_label=None):
     from django.conf import settings
     from django.contrib import admin
+
     app_list = admin.AdminSite.get_app_list(self, request, app_label=app_label)
     app_mapping = {app["app_label"]: app for app in app_list}
-    out = [app_mapping.pop(app_label) for app_label in settings.DJANGO_ADMIN_APP_ORDER if app_label in app_mapping]
+    out = [
+        app_mapping.pop(app_label)
+        for app_label in settings.DJANGO_ADMIN_APP_ORDER
+        if app_label in app_mapping
+    ]
     for app in settings.DJANGO_ADMIN_APP_EXCLUDE:
         app_mapping.pop(app, None)
     out += app_mapping.values()
@@ -38,6 +44,7 @@ def at_server_init():
 
     cmdhandler._msg_err = _msg_err
     from evennia.web.utils.adminsite import EvenniaAdminSite
+
     EvenniaAdminSite.get_app_list = web_admin_apps
 
 
@@ -46,8 +53,8 @@ def at_server_start():
     This is called every time the server starts up, regardless of
     how it was shut down.
     """
-    #from athanor.mudrich import install_mudrich
-    #install_mudrich()
+    # from athanor.mudrich import install_mudrich
+    # install_mudrich()
 
     from evennia.utils import callables_from_module, class_from_module
     from django.conf import settings
@@ -67,6 +74,8 @@ def at_server_start():
 
         for module in modules_from:
             modules_to.extend(callables_from_module(module).values())
+
+    athanor.register_access_functions(["OBJECT", "SCRIPT", "ACCOUNT", "CHANNEL"])
 
 
 def at_server_stop():
@@ -100,7 +109,10 @@ def at_server_cold_start():
     # but can't be, because we crashed. This should put them all
     # into storage and update all time trackers.
     from athanor.typeclasses.characters import AthanorPlayerCharacter
-    for obj in AthanorPlayerCharacter.objects.get_by_tag(key="puppeted", category="account"):
+
+    for obj in AthanorPlayerCharacter.objects.get_by_tag(
+        key="puppeted", category="account"
+    ):
         obj.at_post_unpuppet(last_logout=obj.db.last_online, shutdown=True)
 
 

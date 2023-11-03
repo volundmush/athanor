@@ -1,4 +1,3 @@
-
 from .mixin import AthanorBase
 from evennia.objects.objects import DefaultExit
 

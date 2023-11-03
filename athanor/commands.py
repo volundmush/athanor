@@ -49,7 +49,6 @@ class OutputBuffer:
 
 
 class _AthanorCommandMixin:
-
     def create_buffer(self, method=None):
         if not method:
             method = self.msg
@@ -143,6 +142,7 @@ class AthanorCommand(_AthanorCommandMixin, MuxCommand):
     """
     This is a base command for all Athanor commands.
     """
+
     pass
 
 
@@ -150,4 +150,5 @@ class AthanorAccountCommand(_AthanorCommandMixin, MuxAccountCommand):
     """
     This is a base command for all Athanor commands.
     """
+
     pass

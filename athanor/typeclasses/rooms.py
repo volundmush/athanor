@@ -11,6 +11,7 @@ class AthanorRoom(AthanorBase, DefaultRoom):
     """
     Not much different from Evennia DefaultRooms.
     """
+
     _content_types = ("room",)
 
     format_kwargs = ("header", "details", "desc", "subheader", "map", "contents")
@@ -37,7 +38,13 @@ class AthanorRoom(AthanorBase, DefaultRoom):
             return False
         return "structure" in destination._content_types
 
-    def at_object_receive(self, obj: DefaultObject, source_location: typing.Optional[DefaultObject], move_type="move", **kwargs):
+    def at_object_receive(
+        self,
+        obj: DefaultObject,
+        source_location: typing.Optional[DefaultObject],
+        move_type="move",
+        **kwargs,
+    ):
         """
         Called after an object has been moved into this object.
 
@@ -139,10 +146,14 @@ class AthanorRoom(AthanorBase, DefaultRoom):
         return ""
 
     def get_display_header(self, looker, **kwargs):
-        return "O----------------------------------------------------------------------O"
+        return (
+            "O----------------------------------------------------------------------O"
+        )
 
     def get_display_subheader(self, looker, **kwargs):
-        return "------------------------------------------------------------------------"
+        return (
+            "------------------------------------------------------------------------"
+        )
 
     def get_display_details(self, looker, **kwargs):
         out = []
@@ -150,7 +161,9 @@ class AthanorRoom(AthanorBase, DefaultRoom):
 
         out.append(f"Location: {self.get_display_name(looker=looker, **kwargs)}")
         if self.location:
-            out.append(f"Area: {self.location.get_display_name(looker=looker, **kwargs)}")
+            out.append(
+                f"Area: {self.location.get_display_name(looker=looker, **kwargs)}"
+            )
         if builder:
             out.append(self.generate_builder_info(looker, **kwargs))
         return "\r\n".join(out)
@@ -167,7 +180,9 @@ class AthanorRoom(AthanorBase, DefaultRoom):
         map_legend = self.generate_map_legend(looker, **kwargs)
         compass = self.generate_compass(looker)
         out.append("       Compass        AutoMap                  Map Key|n")
-        out.append("|r -----------------   ---------    -------------------------------------|n")
+        out.append(
+            "|r -----------------   ---------    -------------------------------------|n"
+        )
         max_lines = max(len(col_automap), len(map_legend), len(compass))
         for i in range(max_lines):
             compass_line = compass[i] if i < len(compass) else ""
@@ -179,7 +194,6 @@ class AthanorRoom(AthanorBase, DefaultRoom):
             out.append(line)
         return "\r\n".join(out)
 
-
     def get_list_display_for(self, obj, looker, **kwargs):
         return obj.get_room_display_name(looker=looker, **kwargs)
 
@@ -188,7 +202,7 @@ class AthanorRoom(AthanorBase, DefaultRoom):
         out = list()
 
         for content_type in ("characters", "items"):
-            if (content_obj := contents_map.get(content_type, None)):
+            if content_obj := contents_map.get(content_type, None):
                 for obj in content_obj:
                     out.append(self.get_list_display_for(obj, looker, **kwargs))
         return "\r\n".join(out)

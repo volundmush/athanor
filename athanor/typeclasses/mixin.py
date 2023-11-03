@@ -8,17 +8,70 @@ from evennia.utils.ansi import strip_ansi, ANSIString
 from evennia.utils.utils import lazy_property
 from evennia.objects.objects import _MSG_CONTENTS_PARSER
 
+import athanor
 from athanor.utils import SafeDict, partial_match
 
 
-class AthanorLowBase:
+class AthanorAccess:
+    lock_access_funcs = defaultdict(list)
+
+    def access(
+        self,
+        accessing_obj,
+        access_type="read",
+        default=False,
+        no_superuser_bypass=False,
+        call_hooks=True,
+        call_funcs=True,
+        call_super=True,
+        **kwargs,
+    ):
+        result = (
+            super().access(
+                accessing_obj,
+                access_type=access_type,
+                default=default,
+                no_superuser_bypass=no_superuser_bypass,
+                **kwargs,
+            )
+            if call_super
+            else default
+        )
+        if result:
+            return result
+        if call_hooks:
+            if callable(
+                hook := getattr(
+                    self, f"access_check_{access_type.replace(' ', '_')}", None
+                )
+            ):
+                if hook(accessing_obj, **kwargs):
+                    return True
+        if call_funcs:
+            if funcs := self.lock_access_funcs.get(access_type, list()):
+                for func in funcs:
+                    if func(self, accessing_obj, **kwargs):
+                        return True
+        return False
+
+
+class AthanorLowBase(AthanorAccess):
     msg_parser = _MSG_CONTENTS_PARSER
 
     def render_system_header(self, header: str) -> str:
         return f"|n|m-=<|n|w{header}|n|m>=-|n"
 
-    def system_send(self, header: str, template: str, extra_dict: typing.Optional[dict] = None, from_obj=None,
-             mapping: typing.Optional[dict] = None, delivery: typing.Tuple[str] = None, options=None, **kwargs):
+    def system_send(
+        self,
+        header: str,
+        template: str,
+        extra_dict: typing.Optional[dict] = None,
+        from_obj=None,
+        mapping: typing.Optional[dict] = None,
+        delivery: typing.Tuple[str] = None,
+        options=None,
+        **kwargs,
+    ):
         if mapping is None:
             mapping = dict()
 
@@ -31,17 +84,26 @@ class AthanorLowBase:
             mapping=mapping,
         )
 
-        keys = SafeDict({
+        keys = SafeDict(
+            {
                 key: obj.get_display_name(looker=self)
                 if hasattr(obj, "get_display_name")
                 else str(obj)
                 for key, obj in mapping.items()
-            })
+            }
+        )
 
-        outmessage = ANSIString(f"{self.render_system_header(header)} {outmessage.format_map(keys)}")
+        outmessage = ANSIString(
+            f"{self.render_system_header(header)} {outmessage.format_map(keys)}"
+        )
 
-        self.msg(text=(outmessage, extra_dict) if extra_dict else outmessage, from_obj=from_obj,
-                 options=options, delivery=delivery, **kwargs)
+        self.msg(
+            text=(outmessage, extra_dict) if extra_dict else outmessage,
+            from_obj=from_obj,
+            options=options,
+            delivery=delivery,
+            **kwargs,
+        )
 
 
 class AthanorBase(AthanorLowBase):
@@ -49,7 +111,16 @@ class AthanorBase(AthanorLowBase):
     Mixin for general Athanor functionality.
     """
 
-    format_kwargs = ("name", "desc", "header", "footer", "exits", "characters", "things")
+    format_kwargs = (
+        "name",
+        "desc",
+        "header",
+        "footer",
+        "exits",
+        "characters",
+        "things",
+    )
+    lock_access_funcs = athanor.OBJECT_ACCESS_FUNCTIONS
 
     def return_appearance(self, looker, **kwargs):
         if not looker:
@@ -57,12 +128,14 @@ class AthanorBase(AthanorLowBase):
         kwargs["contents_map"] = self.get_visible_contents(looker, **kwargs)
         out_dict = SafeDict()
         for k in self.format_kwargs:
-            if (f_func := getattr(self, f"get_display_{k}", None)):
+            if f_func := getattr(self, f"get_display_{k}", None):
                 if callable(f_func):
                     out_dict[k] = f_func(looker, **kwargs)
                 else:
                     out_dict[k] = f_func
-        return self.format_appearance(self.appearance_template.format_map(out_dict), looker, **kwargs)
+        return self.format_appearance(
+            self.appearance_template.format_map(out_dict), looker, **kwargs
+        )
 
     def can_hear(self, target):
         return True
@@ -76,7 +149,7 @@ class AthanorBase(AthanorLowBase):
     def at_hear(self, text, from_obj, msg_type, extra, **kwargs):
         text = strip_ansi(text)
         first_quote = text.find('"')
-        speech = text[first_quote + 1:-1]
+        speech = text[first_quote + 1 : -1]
         pass  # self.dgscripts.trigger_speech(speech, from_obj, **kwargs)
 
     def at_see(self, text, from_obj, msg_type, extra, **kwargs):
@@ -114,13 +187,21 @@ class AthanorBase(AthanorLowBase):
         """
         return True
 
-    def do_action(self, template: str, delivery: dict, mapping: dict, targets: list, **kwargs):
+    def do_action(
+        self, template: str, delivery: dict, mapping: dict, targets: list, **kwargs
+    ):
         """
         Distribute a format-message as self to targets.
         """
         for target in targets:
             if target.check_delivery(self, template, delivery, mapping):
-                target.send(template, extra_dict=delivery, mapping=mapping, from_obj=self, **kwargs)
+                target.send(
+                    template,
+                    extra_dict=delivery,
+                    mapping=mapping,
+                    from_obj=self,
+                    **kwargs,
+                )
 
     def _do_basic(self, mode: str, text: str, delivery: dict, **kwargs):
         if not self.location:
@@ -129,13 +210,26 @@ class AthanorBase(AthanorLowBase):
         message = settings.ACTION_TEMPLATES.get(mode)
         text_clean = ANSIString(text).clean()
         mapping = {"text": text, "text_clean": text_clean, "here": self.location}
-        self.do_action(message, delivery=delivery, mapping=mapping, targets=self.location.contents, **kwargs)
+        self.do_action(
+            message,
+            delivery=delivery,
+            mapping=mapping,
+            targets=self.location.contents,
+            **kwargs,
+        )
 
     def do_whisper(self, text: str, target, **kwargs):
         message = settings.ACTION_TEMPLATES.get("whisper")
         text_clean = ANSIString(text).clean()
-        mapping = {"text": text, "text_clean": text_clean, "here": self.location, "target": target}
-        self.do_action(message, delivery={}, mapping=mapping, targets=[target, self], **kwargs)
+        mapping = {
+            "text": text,
+            "text_clean": text_clean,
+            "here": self.location,
+            "target": target,
+        }
+        self.do_action(
+            message, delivery={}, mapping=mapping, targets=[target, self], **kwargs
+        )
 
     def do_say(self, text: str, **kwargs):
         self._do_basic("say", text=text, delivery={}, **kwargs)
@@ -149,8 +243,16 @@ class AthanorBase(AthanorLowBase):
     def do_emit(self, text: str, **kwargs):
         self._do_basic("emit", text=text, delivery={}, **kwargs)
 
-    def send(self, text: str, extra_dict: typing.Optional[dict] = None, from_obj=None,
-             mapping: typing.Optional[dict] = None, delivery: typing.Tuple[str] = None, options=None, **kwargs):
+    def send(
+        self,
+        text: str,
+        extra_dict: typing.Optional[dict] = None,
+        from_obj=None,
+        mapping: typing.Optional[dict] = None,
+        delivery: typing.Tuple[str] = None,
+        options=None,
+        **kwargs,
+    ):
         """
         This method renders text templates in the same manner as DefaultObject.msg_contents and sends it to this
         object via .msg(). It is meant to be used as the termination point of all methods which generate in-character
@@ -181,21 +283,26 @@ class AthanorBase(AthanorLowBase):
             mapping=mapping,
         )
 
-        keys = SafeDict({
+        keys = SafeDict(
+            {
                 key: obj.get_display_name(looker=self)
                 if hasattr(obj, "get_display_name")
                 else str(obj)
                 for key, obj in mapping.items()
-            })
+            }
+        )
 
         outmessage = ANSIString(outmessage.format_map(keys))
 
-        self.msg(text=(outmessage, extra_dict) if extra_dict else outmessage, from_obj=from_obj,
-                 options=options, delivery=delivery, **kwargs)
+        self.msg(
+            text=(outmessage, extra_dict) if extra_dict else outmessage,
+            from_obj=from_obj,
+            options=options,
+            delivery=delivery,
+            **kwargs,
+        )
         if delivery:
-            self.at_delivery(from_obj, mapping, )
-
-    def is_admin(self) -> bool:
-        if self.account:
-            return self.account.is_admin()
-        return False
+            self.at_delivery(
+                from_obj,
+                mapping,
+            )

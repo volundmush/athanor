@@ -14,6 +14,11 @@ CMD_MODULES_ACCOUNT = []
 
 PLUGINS = dict()
 
+OBJECT_ACCESS_FUNCTIONS = defaultdict(list)
+SCRIPT_ACCESS_FUNCTIONS = defaultdict(list)
+ACCOUNT_ACCESS_FUNCTIONS = defaultdict(list)
+CHANNEL_ACCESS_FUNCTIONS = defaultdict(list)
+
 EVENTS: dict[str, set] = defaultdict(set)
 
 
@@ -71,6 +76,8 @@ def _apply_settings(settings):
 
     settings.BASE_ACCOUNT_TYPECLASS = "athanor.typeclasses.accounts.AthanorAccount"
 
+    settings.BASE_CHANNEL_TYPECLASS = "athanor.typeclasses.channels.AthanorChannel"
+
     settings.CMDSET_UNLOGGEDIN = "athanor.cmdsets.UnloggedinCmdSet"
     settings.CMDSET_SESSION = "athanor.cmdsets.SessionCmdSet"
     settings.CMDSET_CHARACTER = "athanor.cmdsets.CharacterCmdSet"
@@ -111,7 +118,7 @@ def _apply_settings(settings):
     settings.OPTIONS_ACCOUNT_DEFAULT["client_width"] = (
         "Preferred client width.",
         "PositiveInteger",
-        settings.CLIENT_DEFAULT_WIDTH
+        settings.CLIENT_DEFAULT_WIDTH,
     )
 
     settings.OPTIONS_ACCOUNT_DEFAULT["rich_border_style"] = (
@@ -155,11 +162,14 @@ def _apply_settings(settings):
         "auth",
     ]
 
-    settings.DJANGO_ADMIN_APP_EXCLUDE = [
-        "account"
-    ]
+    settings.DJANGO_ADMIN_APP_EXCLUDE = ["account"]
 
     settings.HELP_MORE_ENABLED = False
+
+    settings.OBJECT_ACCESS_FUNCTIONS = defaultdict(list)
+    settings.SCRIPT_ACCESS_FUNCTIONS = defaultdict(list)
+    settings.ACCOUNT_ACCESS_FUNCTIONS = defaultdict(list)
+    settings.CHANNEL_ACCESS_FUNCTIONS = defaultdict(list)
 
 
 def init(settings, plugins=None):
@@ -180,3 +190,18 @@ def init(settings, plugins=None):
 
     for p in call_order:
         p.init(settings, PLUGINS)
+
+
+def register_access_functions(access_types: list[str]):
+    from evennia.utils import class_from_module
+    from django.conf import settings
+    import athanor
+
+    for t in access_types:
+        access_funcs = f"{t}_ACCESS_FUNCTIONS"
+        access_funcs_from = getattr(settings, access_funcs)
+        access_funcs_to = getattr(athanor, access_funcs)
+
+        for access_type, func_list in access_funcs_from.items():
+            for func_path in func_list:
+                access_funcs_to[access_type].append(class_from_module(func_path))
