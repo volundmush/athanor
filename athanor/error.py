@@ -1,3 +1,6 @@
+"""
+This module implements the Rich Traceback support for Evennia Commands.
+"""
 import os
 from evennia.commands.cmdhandler import logger, format_exc, _IN_GAME_ERRORS, _
 from rich.console import Console, RenderResult, ConsoleOptions, ConsoleRenderable, group

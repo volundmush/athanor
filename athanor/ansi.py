@@ -1,3 +1,9 @@
+"""
+This is a Python re-implementation of the ANSI Parser "RavensGleaning" written in JavaScript.
+
+It converts raw ANSI strings to HTML spans.
+"""
+
 COLOR_TABLE = {
     0: "#000000",
     1: "#800000",
@@ -259,6 +265,10 @@ COLOR_TABLE = {
 
 
 class State:
+    """
+    Object which tracks the current state of the ANSI configuration.
+    """
+
     def __init__(self, color_table):
         self.color_table = color_table
         self.bold = False
@@ -269,6 +279,9 @@ class State:
         self.reverse = False
 
     def reset(self):
+        """
+        Reset the state to the default.
+        """
         self.bold = False
         self.blink = False
         self.foreground = 7
@@ -277,6 +290,9 @@ class State:
         self.reverse = False
 
     def is_reset(self):
+        """
+        Check if the state is the default.
+        """
         return not (
             self.bold
             or self.blink

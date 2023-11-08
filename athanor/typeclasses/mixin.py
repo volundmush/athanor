@@ -26,7 +26,8 @@ class AthanorAccess:
         call_super=True,
         **kwargs,
     ):
-        result = (
+        access_type = access_type.lower()
+        if result := (
             super().access(
                 accessing_obj,
                 access_type=access_type,
@@ -36,8 +37,7 @@ class AthanorAccess:
             )
             if call_super
             else default
-        )
-        if result:
+        ):
             return result
         if call_hooks:
             if callable(
@@ -50,7 +50,9 @@ class AthanorAccess:
         if call_funcs:
             if funcs := self.lock_access_funcs.get(access_type, list()):
                 for func in funcs:
-                    if func(self, accessing_obj, **kwargs):
+                    if callable(func) and func(
+                        self, accessing_obj, access_type, **kwargs
+                    ):
                         return True
         return False
 

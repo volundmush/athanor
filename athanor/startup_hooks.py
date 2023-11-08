@@ -19,6 +19,10 @@ at_server_cold_stop()
 
 
 def web_admin_apps(self, request, app_label=None):
+    """
+    This is a monkey-patch for the Evennia admin site to allow access to all models.
+    It is patched in during at_server_init() below.
+    """
     from django.conf import settings
     from django.contrib import admin
 
@@ -39,10 +43,13 @@ def at_server_init():
     """
     This is called first as the server is starting up, regardless of how.
     """
+    # Monkey-patch the Rich error handling into the Evennia cmdhandler.
     from evennia.commands import cmdhandler
     from athanor.error import _msg_err
 
     cmdhandler._msg_err = _msg_err
+
+    # Monkey-patch the Evennia admin site to allow access to all models.
     from evennia.web.utils.adminsite import EvenniaAdminSite
 
     EvenniaAdminSite.get_app_list = web_admin_apps
@@ -75,7 +82,7 @@ def at_server_start():
         for module in modules_from:
             modules_to.extend(callables_from_module(module).values())
 
-    athanor.register_access_functions(["OBJECT", "SCRIPT", "ACCOUNT", "CHANNEL"])
+    athanor.register_access_functions(settings.ACCESS_FUNCTIONS_LIST)
 
 
 def at_server_stop():

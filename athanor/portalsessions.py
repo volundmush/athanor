@@ -41,6 +41,10 @@ class WebSocket(PortalSessionMixin, WebSocketClient):
     converter = RavensGleaning()
 
     def send_rich(self, *args, **kwargs):
+        """
+        Send rich data as ANSI color. args[0] should already be
+        fully rendered.
+        """
         if not args:
             return
         if not isinstance(args[0], str):

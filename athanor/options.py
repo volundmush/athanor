@@ -1,9 +1,16 @@
+"""
+Contains additional OptionClasses for Athanor.
+"""
 from evennia.utils.optionclasses import BaseOption
 from rich.style import Style as _RichStyle
 from rich.errors import StyleSyntaxError
 
 
 class Style(BaseOption):
+    """
+    Class which handles Rich Style storage for OptionHandlers.
+    """
+
     def validate(self, value, **kwargs):
         try:
             style = _RichStyle.parse(value)

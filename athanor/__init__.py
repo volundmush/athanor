@@ -96,6 +96,8 @@ def _apply_settings(settings):
     settings.AUTOMAP_ENABLED = False
 
     settings.OPTION_CLASS_MODULES.append("athanor.options")
+    if isinstance(settings.LOCK_FUNC_MODULES, tuple):
+        settings.LOCK_FUNC_MODULES = list(settings.LOCK_FUNC_MODULES)
 
     settings.OPTIONS_ACCOUNT_DEFAULT["screenreader"] = (
         "Minimize fancy formatting.",
@@ -132,7 +134,7 @@ def _apply_settings(settings):
         "bold",
     )
 
-    settings.ALERTS_CHANNELS = "MudInfo"
+    settings.ALERTS_CHANNEL = "MudInfo"
     settings.ROOT_URLCONF = "athanor.urls"
 
     settings.URL_INCLUDES = [
@@ -170,6 +172,8 @@ def _apply_settings(settings):
     settings.SCRIPT_ACCESS_FUNCTIONS = defaultdict(list)
     settings.ACCOUNT_ACCESS_FUNCTIONS = defaultdict(list)
     settings.CHANNEL_ACCESS_FUNCTIONS = defaultdict(list)
+
+    settings.ACCESS_FUNCTIONS_LIST = ["OBJECT", "SCRIPT", "ACCOUNT", "CHANNEL"]
 
 
 def init(settings, plugins=None):

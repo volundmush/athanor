@@ -15,6 +15,10 @@ _Select = None
 
 
 class AthanorServerSession(ServerSession):
+    """
+    ServerSession class which integrates the Rich Console into Evennia.
+    """
+
     @lazy_property
     def console(self):
         # from athanor.mudrich import MudConsole

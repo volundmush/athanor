@@ -175,7 +175,9 @@ def staff_alert(message: str, senders=None):
     from evennia.comms.comms import DefaultChannel
 
     if not (
-        channel := DefaultChannel.objects.filter(db_key=settings.ALERTS_CHANNEL).first()
+        channel := DefaultChannel.objects.filter_family(
+            db_key=settings.ALERTS_CHANNEL
+        ).first()
     ):
         return
 
@@ -201,35 +203,51 @@ class OperationError(ValueError):
 class Operation:
     """
     Class used to handle requests against Athanor API objects to reduce boilerplate.
+
+    This is available in convenience wrapper form in AthanorCommand as self.operation, which
+    automates filling out the user and character kwargs.
     """
 
     ex = OperationError
     st = status
 
     def __init__(self, target, **kwargs):
+        """
+        Create the Operation object.
+        """
+        # The target is the object which is being operated on.
+        # it must have methods that match the pattern op_<operation>, like op_create.
+        # These methods must take a single argument, the operation object.
         self.target = target
+
+        # The user and character are the user and character who initiated the operation.
+        # This will be used for permissions checks and logs.
         self.user: "DefaultAccount" = kwargs.pop("user", None)
         self.character: "DefaultCharacter" = kwargs.pop("character", None)
-        self.operation: str = kwargs.pop("operation", None)
-        self.kwargs: dict = kwargs.pop("kwargs", dict())
-        self.extra: dict = kwargs
-        self.status: status = status.HTTP_200_OK
-        self.results = dict()
-        self.system_name = getattr(self.target, "system_name", "SYSTEM")
-        self.actor = self.character or self.user
-        self.variables = dict()
 
-    def error(self, message: str):
-        """
-        Send an error message to the user.
-        """
-        target = self.character or self.user
-        target.system_send(
-            getattr(self.target, "system_name", "SYSTEM"),
-            message,
-            mapping={},
-            from_obj=target,
-        )
+        # The operation that will be called on the target. This must be a string.
+        self.operation: str = kwargs.pop("operation", None)
+
+        # Arbitrary variables available to the operation.
+        self.kwargs: dict = kwargs.pop("kwargs", dict())
+
+        # The HTTP response code to return to the user. This is relevant only for
+        # web views.
+        self.status: status = status.HTTP_200_OK
+
+        # The results of the operation. This is a dictionary that is accessible
+        # after the operation.
+        self.results = dict()
+
+        # Used for formatting some messages.
+        self.system_name = getattr(self.target, "system_name", "SYSTEM")
+
+        # A convenience variable of accessing (character or user), usually used for
+        # lock checks.
+        self.actor = self.character or self.user
+
+        # Used as scratch space by the operation, if needed.
+        self.variables = dict()
 
     def execute(self):
         try:
