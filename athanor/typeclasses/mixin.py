@@ -4,16 +4,37 @@ from collections import defaultdict
 
 from django.conf import settings
 
+from evennia.utils import logger, lazy_property, make_iter, to_str
 from evennia.utils.ansi import strip_ansi, ANSIString
-from evennia.utils.utils import lazy_property
 from evennia.objects.objects import _MSG_CONTENTS_PARSER
 
 import athanor
 from athanor.utils import SafeDict, partial_match
+from athanor.lockhandler import AthanorLockHandler
 
 
 class AthanorAccess:
     lock_access_funcs = defaultdict(list)
+    lock_default_funcs = defaultdict(list)
+
+    @lazy_property
+    def locks(self):
+        return AthanorLockHandler(self)
+
+    def get_lockdef(self, access_type: str):
+        """
+        Retrieves the lockstring for the given access type.
+        """
+        for func in self.lock_default_funcs.get(access_type, list()):
+            if callable(func):
+                func = func(self, access_type)
+            if isinstance(func, str):
+                func = self.locks._parse_lockstring(f"{access_type}:{func}")[
+                    access_type
+                ]
+            if isinstance(func, (tuple, list)):
+                return func
+        return None
 
     def access(
         self,
@@ -308,3 +329,126 @@ class AthanorBase(AthanorLowBase):
                 from_obj,
                 mapping,
             )
+
+
+class AthanorObject(AthanorBase):
+    def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
+        """
+        Emits something to a session attached to the object.
+
+        Args:
+            text (str or tuple, optional): The message to send. This
+                is treated internally like any send-command, so its
+                value can be a tuple if sending multiple arguments to
+                the `text` oob command.
+            from_obj (obj or list, optional): object that is sending. If
+                given, at_msg_send will be called. This value will be
+                passed on to the protocol. If iterable, will execute hook
+                on all entities in it.
+            session (Session or list, optional): Session or list of
+                Sessions to relay data to, if any. If set, will force send
+                to these sessions. If unset, who receives the message
+                depends on the MULTISESSION_MODE.
+            options (dict, optional): Message-specific option-value
+                pairs. These will be applied at the protocol level.
+        Keyword Args:
+            any (string or tuples): All kwarg keys not listed above
+                will be treated as send-command names and their arguments
+                (which can be a string or a tuple).
+
+        Notes:
+            `at_msg_receive`and at_post_msg_receive will be called on this Object.
+            All extra kwargs will be passed on to the protocol.
+
+        """
+        kwargs["options"] = options
+        self._msg_helper_text_format(text, kwargs)
+
+        # try send hooks
+        self._msg_helper_from_obj(text=text, from_obj=from_obj, **kwargs)
+
+        if not self._msg_helper_receive(text=text, from_obj=from_obj, **kwargs):
+            return
+
+        # relay to session(s)
+        self._msg_helper_session_relay(session=session, **kwargs)
+
+        self.at_post_msg_receive(from_obj=from_obj, **kwargs)
+
+    def at_post_msg_receive(self, from_obj=None, **kwargs):
+        """
+        Overloadable hook which receives the kwargs that exist at the tail end of self.msg()'s processing.
+
+        This might be used for logging and similar purposes.
+
+        Kwargs:
+            from_obj (DefaultObject or list[DefaultObject]): The objects that sent the message.
+            **kwargs: The kwargs from the end of message, using the Evennia outputfunc format.
+        """
+        for t in self._content_types:
+            athanor.EVENTS[f"{t}_msg"].send(self, from_obj=from_obj, **kwargs)
+
+    def _msg_helper_session_relay(self, session=None, **kwargs):
+        """
+        Helper method for object.msg() to send output to sessions.
+
+        Kwargs:
+            session (Session or list[Session], optional): Sessions to specifically send the message to, if any.
+            **kwargs: The message being sent, as evennia outputfuncs. this will be passed directly to session.data_out()
+        """
+        sessions = make_iter(session) if session else self.sessions.all()
+        for session in sessions:
+            session.data_out(**kwargs)
+
+    def _msg_helper_text_format(self, text, kwargs: dict):
+        """
+        Helper method that formats the text kwarg for sending.
+
+        Args:
+            text (str or None): A string object or something that can be coerced into a string.
+            kwargs: The outputfuncs dictionary being built up for this .msg() operation.
+        """
+        if text is not None:
+            if not (isinstance(text, str) or isinstance(text, tuple)):
+                # sanitize text before sending across the wire
+                try:
+                    text = to_str(text)
+                except Exception:
+                    text = repr(text)
+            kwargs["text"] = text
+
+    def _msg_helper_from_obj(self, text=None, from_obj=None, **kwargs):
+        """
+        Helper method for .msg() that handles calling at_msg_send on the from_obj.
+
+        Kwargs:
+            text (str or None): A string object or something that can be coerced into a string.
+            from_obj (DefaultObject or list[DefaultObject]): The objects to call the hook on.
+            **kwargs: The outputfuncs being sent by this .msg() call.
+        """
+        if from_obj:
+            for obj in make_iter(from_obj):
+                try:
+                    obj.at_msg_send(text=text, to_obj=self, **kwargs)
+                except Exception:
+                    logger.log_trace()
+
+    def _msg_helper_receive(self, text=None, from_obj=None, **kwargs) -> bool:
+        """
+        Helper method for .msg() that handles calling at_msg_receive on this object.
+
+        Kwargs:
+            text (str or None): A string object or something that can be coerced into a string.
+            from_obj (DefaultObject or list[DefaultObject]): The objects to call the hook on.
+            **kwargs: The outputfuncs being sent by this .msg() call.
+
+        Returns:
+            result (bool): True if the message should be sent, False if it should be aborted.
+        """
+        try:
+            if not self.at_msg_receive(text=text, from_obj=from_obj, **kwargs):
+                # if at_msg_receive returns false, we abort message to this object
+                return False
+        except Exception:
+            logger.log_trace()
+        return True

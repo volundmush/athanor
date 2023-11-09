@@ -42,6 +42,7 @@ The majority of my vision is based on experience from working with RPI MUDs and 
   * Utility functions.
   * Composable CmdSets
   * Extended Options/Style System.
+  * Heavily extended/modified Evennia Lock system.
 
 ## OFFICIAL PLUGINS
   * A Myrrdin-style [BBS](https://github.com/volundmush/athanor_boards) with Board Collections and prefixes to organize boards for IC and OOC purposes. Similar to Forums, but with a classic MUX/MUSH feel.
@@ -108,6 +109,21 @@ To make adding commands easier, Athanor's settings provide the `CMD_MODULES_<typ
 Any Python modules added to this list will have their commands added to the respective default cmdsets by default.
 
 NOTE: This is done via `evennia.utils.utils.callables_from_module`, which extracts all callables defined in a module (not imported) that do not begin with a _. These modules should NOT contain any other classes or functions, unless they begin with an underscore.
+
+### LOCKS
+Overall, Evennia's lock system is amazing. The concept of access_type and lockfuncs is great. However, encoding database IDs directly into strings is kind of a pain - imagine a game where characters are moved between accounts and having to constantly adjust the puppet lock, for instance? Or trying to bind an object's permissions to some kind of external access control list? How will you migrate the locks later if defaults change?
+
+Athanor provides a heavily extended and modified Lock system to attempt to answer this dilemna.
+
+The `athanor.typeclasses.mixin.AthanorAccess` typeclass mixin provides an advanced LockHandler and .access() method which provides an expanded foundation upon which a greater variety of systems can be built, with several already provided.
+
+The AthanorLockHandler provides a mechanism for allowing each typeclass to define a `dict[access_type, list]` of lockfuncs checked in list order to determine defaults. Athanor's own plugin systems use this for Zone control, if using the Zone plugins. Zone defaults are put at the front of the list for objects that belong to Zones, while the second entry is the default for that Typeclass. The first check that returns a lockdef will be be called.
+
+Additionally, if an object defines an `access_check_<access_type>` method, it will be called to determine if the lock is passed. The `AthanorCharacter` typeclass uses this for `access_check_puppet` to see if accessing_obj is the Account the character belongs to.
+
+Lastly, it's possible to define a series of access_funcs which also respond to access_type.
+
+Between all of these systems, one should only need to explicitly set an actual lock on an object if it's meant to be an exception to the norms, and defaults can be managed in settings.py for easy central management.
 
 ### EVENT EMITTER
 This is honestly quite simple.

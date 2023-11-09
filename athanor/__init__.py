@@ -1,3 +1,4 @@
+from django.dispatch import Signal
 from collections import defaultdict
 
 CHARACTERS_ONLINE = set()
@@ -19,22 +20,12 @@ SCRIPT_ACCESS_FUNCTIONS = defaultdict(list)
 ACCOUNT_ACCESS_FUNCTIONS = defaultdict(list)
 CHANNEL_ACCESS_FUNCTIONS = defaultdict(list)
 
-EVENTS: dict[str, set] = defaultdict(set)
+EVENTS: dict[str, Signal] = defaultdict(Signal)
 
-
-def emit(event: str, *args, **kwargs):
-    callbacks = EVENTS.get(event, set())
-    for callback in callbacks:
-        callback(*args, **kwargs)
-
-
-def register_event(event: str, callback):
-    EVENTS[event].add(callback)
-
-
-def unregister_event(event: str, callback):
-    if event in EVENTS:
-        EVENTS[event].remove(callback)
+OBJECT_OBJECT_DEFAULT_LOCKS = defaultdict(list)
+OBJECT_CHARACTER_DEFAULT_LOCKS = defaultdict(list)
+OBJECT_EXIT_DEFAULT_LOCKS = defaultdict(list)
+OBJECT_ROOM_DEFAULT_LOCKS = defaultdict(list)
 
 
 def _apply_settings(settings):
@@ -175,6 +166,72 @@ def _apply_settings(settings):
 
     settings.ACCESS_FUNCTIONS_LIST = ["OBJECT", "SCRIPT", "ACCOUNT", "CHANNEL"]
 
+    settings.OBJECT_OBJECT_DEFAULT_LOCKS = defaultdict(list)
+    settings.OBJECT_CHARACTER_DEFAULT_LOCKS = defaultdict(list)
+    settings.OBJECT_EXIT_DEFAULT_LOCKS = defaultdict(list)
+    settings.OBJECT_ROOM_DEFAULT_LOCKS = defaultdict(list)
+
+    object_default_locks = {
+        "control": "perm(Developer)",
+        "examine": "perm(Builder)",
+        "edit": "perm(Admin)",
+        "delete": "perm(Admin)",
+        "get": "all()",
+        "drop": "holds()",
+        "call": "true()",
+        "tell": "perm(Admin)",
+        "puppet": "pperm(Developer)",
+        "teleport": "true()",
+        "teleport_here": "true()",
+    }
+
+    character_default_locks = object_default_locks.copy()
+    character_default_locks.update(
+        {
+            "get": "false()",
+            "call": "false()",
+            "teleport": "perm(Admin)",
+            "teleport_here": "perm(Admin)",
+        }
+    )
+
+    room_default_locks = object_default_locks.copy()
+    room_default_locks.update(
+        {
+            "get": "false()",
+            "puppet": "false()",
+            "teleport": "false()",
+            "teleport_here": "true()",
+        }
+    )
+
+    exit_default_locks = object_default_locks.copy()
+    exit_default_locks.update(
+        {
+            "traverse": "all()",
+            "get": "false()",
+            "puppet": "false()",
+            "teleport": "false()",
+            "teleport_here": "false()",
+        }
+    )
+
+    for locks, target in [
+        (object_default_locks, settings.OBJECT_OBJECT_DEFAULT_LOCKS),
+        (character_default_locks, settings.OBJECT_CHARACTER_DEFAULT_LOCKS),
+        (room_default_locks, settings.OBJECT_ROOM_DEFAULT_LOCKS),
+        (exit_default_locks, settings.OBJECT_EXIT_DEFAULT_LOCKS),
+    ]:
+        for k, v in locks.items():
+            target[k].append(v)
+
+    settings.DEFAULT_LOCKS_LIST = [
+        "OBJECT_OBJECT",
+        "OBJECT_CHARACTER",
+        "OBJECT_EXIT",
+        "OBJECT_ROOM",
+    ]
+
 
 def init(settings, plugins=None):
     _apply_settings(settings)
@@ -195,6 +252,16 @@ def init(settings, plugins=None):
     for p in call_order:
         p.init(settings, PLUGINS)
 
+    for p in call_order:
+        if callable((post_init := getattr(p, "post_init", None))):
+            post_init(settings, PLUGINS)
+
+
+def finalize(settings):
+    for p in PLUGINS.values():
+        if callable((finalize := getattr(p, "finalize", None))):
+            finalize(settings, PLUGINS)
+
 
 def register_access_functions(access_types: list[str]):
     from evennia.utils import class_from_module
@@ -209,3 +276,22 @@ def register_access_functions(access_types: list[str]):
         for access_type, func_list in access_funcs_from.items():
             for func_path in func_list:
                 access_funcs_to[access_type].append(class_from_module(func_path))
+
+
+def register_lock_functions(types: list[str]):
+    from evennia.utils import class_from_module
+    from django.conf import settings
+    import athanor
+
+    for t in types:
+        default_locks = f"{t}_DEFAULT_LOCKS"
+        default_locks_from = getattr(settings, default_locks)
+        default_locks_to = getattr(athanor, default_locks)
+
+        for access_type, func_list in default_locks_from.items():
+            for func_path in func_list:
+                if "(" in func_path:
+                    # this is a literal lockstring. Add it directly.
+                    default_locks_to[access_type].append(func_path)
+                else:
+                    default_locks_to[access_type].append(class_from_module(func_path))

@@ -83,6 +83,7 @@ def at_server_start():
             modules_to.extend(callables_from_module(module).values())
 
     athanor.register_access_functions(settings.ACCESS_FUNCTIONS_LIST)
+    athanor.register_lock_functions(settings.DEFAULT_LOCKS_LIST)
 
 
 def at_server_stop():

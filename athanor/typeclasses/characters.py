@@ -3,16 +3,36 @@ from django.conf import settings
 from evennia.objects.objects import DefaultCharacter, DefaultObject
 import athanor
 from athanor.utils import utcnow
-from .mixin import AthanorBase
+from .mixin import AthanorObject
 
 
-class AthanorCharacter(AthanorBase, DefaultCharacter):
+class AthanorCharacter(AthanorObject, DefaultCharacter):
     """
     Abstract base class for Athanor characters.
     Do not instantiate directly.
     """
 
+    lock_default_funcs = athanor.OBJECT_CHARACTER_DEFAULT_LOCKS
     _content_types = ("character",)
+    lockstring = ""
+
+    def access_check_puppet(self, accessing_obj, **kwargs):
+        """
+        All characters can be puppeted by the Account they are assigned to,
+        as a basic assumption.
+        """
+        if not (
+            account := self.attributes.get("account", category="system", default=None)
+        ):
+            return False
+        return account == accessing_obj
+
+    def basetype_setup(self):
+        """
+        Avoids calling super() in order to avoid setting unnecessary locks.
+        """
+        # add the default cmdset
+        self.cmdset.add_default(settings.CMDSET_CHARACTER, persistent=True)
 
     def at_pre_move(self, destination: typing.Optional[DefaultObject], **kwargs):
         """

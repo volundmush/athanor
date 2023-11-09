@@ -16,6 +16,14 @@ from .mixin import AthanorLowBase
 class AthanorAccount(AthanorLowBase, DefaultAccount):
     lock_access_funcs = athanor.ACCOUNT_ACCESS_FUNCTIONS
 
+    def at_post_add_character(self, character):
+        super().at_post_add_character(character)
+        character.attributes.add("account", category="system", value=self)
+
+    def at_post_remove_character(self, character):
+        super().at_post_add_character(character)
+        character.attributes.remove("account", category="system")
+
     def uses_screenreader(self, session=None):
         return super().uses_screenreader(session=session) or self.options.get(
             "screenreader"

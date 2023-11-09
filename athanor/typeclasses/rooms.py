@@ -1,18 +1,24 @@
 import typing
 from collections import defaultdict
-from .mixin import AthanorBase
-from evennia.objects.objects import DefaultRoom, DefaultObject
-from evennia.utils.ansi import ANSIString
 from django.conf import settings
+
 from evennia.utils import evtable
+from evennia.utils.ansi import ANSIString
+from evennia.objects.objects import DefaultRoom, DefaultObject
 
 
-class AthanorRoom(AthanorBase, DefaultRoom):
+import athanor
+from .mixin import AthanorObject
+
+
+class AthanorRoom(AthanorObject, DefaultRoom):
     """
     Not much different from Evennia DefaultRooms.
     """
 
+    lock_default_funcs = athanor.OBJECT_ROOM_DEFAULT_LOCKS
     _content_types = ("room",)
+    lockstring = ""
 
     format_kwargs = ("header", "details", "desc", "subheader", "map", "contents")
 
@@ -24,6 +30,13 @@ class AthanorRoom(AthanorBase, DefaultRoom):
 {map}
 {contents}
     """
+
+    def basetype_setup(self):
+        """
+        Replicates basic basetype_setup,
+        but avoids calling super() in order to avoid setting unnecessary locks.
+        """
+        self.location = None
 
     def at_object_creation(self):
         # typing.Dict[ExitDir, "AthanorExit"]
