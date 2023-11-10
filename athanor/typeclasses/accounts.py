@@ -30,11 +30,15 @@ class AthanorAccount(AthanorLowBase, DefaultAccount):
         )
 
     def at_post_login(self, session=None, **kwargs):
-        athanor.emit("account_at_post_login", self, session=session, **kwargs)
+        athanor.EVENTS["account_at_post_login"].send(
+            sender=self, session=session, **kwargs
+        )
         super().at_post_login(session=session, **kwargs)
 
     def at_failed_login(self, session, **kwargs):
-        athanor.emit("account_at_failed_login", self, session=session, **kwargs)
+        athanor.EVENTS["account_at_failed_login"].send(
+            sender=self, session=session, **kwargs
+        )
         super().at_failed_login(session=session, **kwargs)
 
     def client_width(self):
