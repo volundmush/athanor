@@ -53,6 +53,7 @@ The majority of my vision is based on experience from working with RPI MUDs and 
   * A [Faction System](https://github.com/volundmush/athanor_factions) for organizing guilds, organizations, and other such groups. Well-integrated with the lock system for Faction membership checks. Factions may be hierarchial, with sub-factions.
   * A [Zone System](https://github.com/volundmush/athanor_zones) for organizing Rooms, Exits, and other Objects into Zones. Zones themselves can be arranged in a tree-like hierarchy.
   * The [Roleplay System](https://github.com/volundmush/athanor_roleplay) provides scheduling and logging tools for roleplay sessions.
+  * The [Backscroll System](https://github.com/volundmush/athanor_backscroll) records a configurable amount of text backscroll for each character, allowing players to catch up on missed activity.
 
 
 ## OKAY, BUT HOW DO I USE IT?
