@@ -112,7 +112,12 @@ class SafeDict(dict):
 RE_STAT_NAME = re.compile(r"^[a-zA-Z0-9_ \-,.']+$")
 
 
-def validate_name(name: str, thing_type: str = "Stat", matcher=RE_STAT_NAME) -> str:
+def validate_name(
+    name: str,
+    thing_type: str = "Stat",
+    matcher=RE_STAT_NAME,
+    ex_type: Exception = ValueError,
+) -> str:
     """
     Cleans and validates a stat name for use in the system.
     This should strip/trim leading/trailing spaces and squish double spaces
@@ -134,9 +139,9 @@ def validate_name(name: str, thing_type: str = "Stat", matcher=RE_STAT_NAME) -> 
     while "  " in name:
         name = name.replace("  ", " ")
     if not name:
-        raise ValueError(f"{thing_type} name cannot be empty.")
+        raise ex_type(f"{thing_type} name cannot be empty.")
     if not matcher.match(name):
-        raise ValueError(f"{thing_type} contains forbidden characters.")
+        raise ex_type(f"{thing_type} contains forbidden characters.")
     return name
 
 

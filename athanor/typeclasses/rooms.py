@@ -2,7 +2,7 @@ import typing
 from collections import defaultdict
 from django.conf import settings
 
-from evennia.utils import evtable
+from evennia.utils import evtable, lazy_property
 from evennia.utils.ansi import ANSIString
 from evennia.objects.objects import DefaultRoom, DefaultObject
 
@@ -50,6 +50,11 @@ class AthanorRoom(AthanorObject, DefaultRoom):
         if not destination:
             return False
         return "structure" in destination._content_types
+
+    def at_object_leave(self, moved_obj, target_location, move_type="move", **kwargs):
+        super().at_object_leave(
+            moved_obj, target_location, move_type=move_type, **kwargs
+        )
 
     def at_object_receive(
         self,

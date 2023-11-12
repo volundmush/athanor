@@ -232,6 +232,11 @@ def _apply_settings(settings):
         "OBJECT_ROOM",
     ]
 
+    # if True, characters who go offline will be stowed in Nowhere and brought back when they next login.
+    # if False, they will remain in the rooms, but simply are offline. It's best to use room formatters to
+    # hide them?
+    settings.OFFLINE_CHARACTERS_VOID_STORAGE = True
+
 
 def init(settings, plugins=None):
     _apply_settings(settings)

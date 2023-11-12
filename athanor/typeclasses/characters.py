@@ -152,6 +152,7 @@ class AthanorPlayerCharacter(AthanorCharacter):
         """
         self.announce_leave_game()
         self.stow()
+        athanor.CHARACTERS_ONLINE.remove(self)
 
     def announce_leave_game(self):
         # this should ALWAYS be true, but in case something weird's going on...
@@ -161,10 +162,13 @@ class AthanorPlayerCharacter(AthanorCharacter):
             )
 
     def stow(self):
+        if not settings.OFFLINE_CHARACTERS_VOID_STORAGE:
+            return
+
         # this should ALWAYS be true, but in case something weird's going on...
         if not self.location:
             return
 
         self.db.prelogout_location = self.location
-        self.location.at_object_leave(self, None)
+        self.location.at_object_leave(self, None, stowed=True)
         self.location = None
