@@ -152,7 +152,8 @@ class AthanorPlayerCharacter(AthanorCharacter):
         """
         self.announce_leave_game()
         self.stow()
-        athanor.CHARACTERS_ONLINE.remove(self)
+        if self in athanor.CHARACTERS_ONLINE:
+            athanor.CHARACTERS_ONLINE.remove(self)
 
     def announce_leave_game(self):
         # this should ALWAYS be true, but in case something weird's going on...

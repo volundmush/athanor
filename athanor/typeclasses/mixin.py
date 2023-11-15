@@ -458,3 +458,8 @@ class AthanorObject(AthanorBase):
         except Exception:
             logger.log_trace()
         return True
+
+    def uses_screenreader(self, session=None):
+        if not self.account:
+            return False
+        return self.account.uses_screenreader(session=session)
