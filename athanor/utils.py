@@ -282,3 +282,37 @@ def ev_to_rich(text: str):
     """
     ev = parse_ansi(str(text), xterm256=True, mxp=True)
     return Text("\n").join(AnsiDecoder().decode(ev))
+
+
+def register_access_functions(access_types: list[str]):
+    from evennia.utils import class_from_module
+    from django.conf import settings
+    import athanor
+
+    for t in access_types:
+        access_funcs = f"{t}_ACCESS_FUNCTIONS"
+        access_funcs_from = getattr(settings, access_funcs)
+        access_funcs_to = getattr(athanor, access_funcs)
+
+        for access_type, func_list in access_funcs_from.items():
+            for func_path in func_list:
+                access_funcs_to[access_type].append(class_from_module(func_path))
+
+
+def register_lock_functions(types: list[str]):
+    from evennia.utils import class_from_module
+    from django.conf import settings
+    import athanor
+
+    for t in types:
+        default_locks = f"{t}_DEFAULT_LOCKS"
+        default_locks_from = getattr(settings, default_locks)
+        default_locks_to = getattr(athanor, default_locks)
+
+        for access_type, func_list in default_locks_from.items():
+            for func_path in func_list:
+                if "(" in func_path:
+                    # this is a literal lockstring. Add it directly.
+                    default_locks_to[access_type].append(func_path)
+                else:
+                    default_locks_to[access_type].append(class_from_module(func_path))

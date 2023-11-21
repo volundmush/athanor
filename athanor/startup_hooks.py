@@ -63,31 +63,52 @@ def at_server_start():
     # from athanor.mudrich import install_mudrich
     # install_mudrich()
 
-    from evennia.utils import callables_from_module, class_from_module
+    from evennia.utils import callables_from_module, class_from_module, logger
     from django.conf import settings
     import athanor
+    from athanor.utils import register_access_functions, register_lock_functions
+
+    try:
+        register_access_functions(settings.ACCESS_FUNCTIONS_LIST)
+    except Exception:
+        logger.log_trace()
+
+    try:
+        register_lock_functions(settings.DEFAULT_LOCKS_LIST)
+    except Exception:
+        logger.log_trace()
 
     for content_type, handler_dict in settings.ATHANOR_HANDLERS.items():
         for handler, handler_path in handler_dict.items():
-            athanor.HANDLERS[content_type][handler] = class_from_module(handler_path)
+            try:
+                athanor.HANDLERS[content_type][handler] = class_from_module(
+                    handler_path
+                )
+            except Exception:
+                logger.log_trace()
 
     for t in ("UNLOGGEDIN", "SESSION", "CHARACTER", "ACCOUNT"):
         cmdsets = f"CMDSETS_{t}_EXTRA"
         cmdsets_from = getattr(settings, cmdsets)
         cmdsets_to = getattr(athanor, cmdsets)
 
-        for cmdset in cmdsets_from:
-            cmdsets_to.append(class_from_module(cmdset))
+        try:
+            for cmdset in cmdsets_from:
+                cmdsets_to.append(class_from_module(cmdset))
+        except Exception:
+            logger.log_trace()
+            continue
 
         modules = f"CMD_MODULES_{t}"
         modules_from = getattr(settings, modules)
         modules_to = getattr(athanor, modules)
 
-        for module in modules_from:
-            modules_to.extend(callables_from_module(module).values())
-
-    athanor.register_access_functions(settings.ACCESS_FUNCTIONS_LIST)
-    athanor.register_lock_functions(settings.DEFAULT_LOCKS_LIST)
+        try:
+            for module in modules_from:
+                modules_to.extend(callables_from_module(module).values())
+        except Exception:
+            logger.log_trace()
+            continue
 
 
 def at_server_stop():
