@@ -80,23 +80,6 @@ class AthanorPlayerCharacter(AthanorCharacter):
 
     _content_types = ("character", "player")
 
-    def at_object_creation(self):
-        super().at_object_creation()
-        self.db.total_playtime = 0
-        self.db.last_login = None
-        self.db.last_logout = None
-        self.db.last_activity = None
-        self.db.last_online = None
-
-    def calculate_playtime(self):
-        """
-        Calculates total playtime in seconds.
-        """
-        if not self.db.last_login:
-            return 0
-        tdelta = utcnow() - self.db.last_login
-        return self.db.total_playtime + int(tdelta.total_seconds())
-
     def at_post_puppet(self, **kwargs):
         """
         Called just after puppeting has been completed and all
@@ -113,12 +96,14 @@ class AthanorPlayerCharacter(AthanorCharacter):
             # Add to the CHARACTERS_ONLINE set for easy indexing of who list and
             # activity tracking.
             athanor.CHARACTERS_ONLINE.add(self)
-            n = utcnow()
-            self.db.last_login = n
-            self.db.last_online = n
             self.at_login()
         else:
             self.msg(f"\nYou become |c{self.get_display_name(self)}|n.\n")
+
+        if self.location:
+            self.msg((self.at_look(self.location), {"type": "look"}), options=None)
+        else:
+            self.msg("You are nowhere. That's not good. Contact an admin.")
 
     def at_login(self):
         """
@@ -135,19 +120,10 @@ class AthanorPlayerCharacter(AthanorCharacter):
             self.location.msg_contents(
                 settings.ACTION_TEMPLATES.get("login"), exclude=[self], from_obj=self
             )
-        else:
-            self.msg(
-                f"\nYou become |c{self.get_display_name(self)}|n. Where are you, though?\n"
-            )
 
     def at_post_unpuppet(self, account=None, session=None, **kwargs):
+        super().at_post_unpuppet(account=account, session=session, **kwargs)
         if not self.sessions.count() or kwargs.get("shutdown", False):
-            # Pulls from kwargs in case this is called by at_server_cold_boot
-            self.db.last_logout = kwargs.get("last_logout", utcnow())
-            tdelta = self.db.last_logout - self.db.last_login
-            self.db.total_playtime = self.db.total_playtime + int(
-                tdelta.total_seconds()
-            )
             self.at_logout()
 
     def at_logout(self):
