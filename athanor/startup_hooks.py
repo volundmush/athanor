@@ -67,6 +67,10 @@ def at_server_start():
     from django.conf import settings
     import athanor
 
+    for content_type, handler_dict in settings.ATHANOR_HANDLERS.items():
+        for handler, handler_path in handler_dict.items():
+            athanor.HANDLERS[content_type][handler] = class_from_module(handler_path)
+
     for t in ("UNLOGGEDIN", "SESSION", "CHARACTER", "ACCOUNT"):
         cmdsets = f"CMDSETS_{t}_EXTRA"
         cmdsets_from = getattr(settings, cmdsets)

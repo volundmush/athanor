@@ -10,11 +10,12 @@ from rich.table import Table
 from rich.box import ASCII2
 
 import athanor
-from .mixin import AthanorLowBase
+from .mixin import AthanorLowBase, AthanorHandler
 
 
-class AthanorAccount(AthanorLowBase, DefaultAccount):
+class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
     lock_access_funcs = athanor.ACCOUNT_ACCESS_FUNCTIONS
+    _content_types = ("account",)
 
     def at_post_add_character(self, character):
         super().at_post_add_character(character)

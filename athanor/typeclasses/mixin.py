@@ -13,6 +13,82 @@ from athanor.utils import SafeDict, partial_match
 from athanor.lockhandler import AthanorLockHandler
 
 
+class Handlers:
+    def __init__(self, obj):
+        self.obj = obj
+        self.handlers: dict[str, "Handler"] = dict()
+        self.loaded = False
+
+    @property
+    def owner(self):
+        return self.obj
+
+    def __contains__(self, item):
+        if item in self.handlers:
+            return True
+        for content_type in reversed(getattr(self.obj, "_content_types", list())):
+            if content_type not in athanor.HANDLERS:
+                continue
+            if item in athanor.HANDLERS[content_type]:
+                return True
+        return False
+
+    def __getattr__(self, item):
+        try:
+            return self[item]
+        except KeyError as err:
+            raise AttributeError(str(err))
+
+    def __getitem__(self, item):
+        if item in self.handlers:
+            return self.handlers[item]
+        for content_type in reversed(getattr(self.obj, "_content_types", list())):
+            if content_type not in athanor.HANDLERS:
+                continue
+            if handler_class := athanor.HANDLERS[content_type].get(item):
+                try:
+                    handler = handler_class(self.owner)
+                except Exception as err:
+                    raise KeyError(str(err))
+                self.handlers[item] = handler
+                return handler
+        raise KeyError(f"No handler found for '{item}'.")
+
+    def load(self):
+        if self.loaded:
+            return
+        self.loaded = True
+        for content_type in reversed(getattr(self.obj, "_content_types", list())):
+            if content_type not in athanor.HANDLERS:
+                continue
+            for handler_key, handler_path in athanor.HANDLERS[content_type].items():
+                if handler_key in self.handlers:
+                    continue
+                try:
+                    handler = handler_path(self.owner)
+                    self.handlers[handler_key] = handler
+                except Exception as err:
+                    self.obj.msg(f"Error loading handler '{handler_key}': {err}")
+
+    def __iter__(self):
+        self.load()
+        return iter(self.handlers.values())
+
+    def all(self):
+        self.load()
+        return list(self.handlers.values())
+
+
+class AthanorHandler:
+    @lazy_property
+    def handlers(self):
+        return Handlers(self)
+
+    @property
+    def h(self):
+        return self.handlers
+
+
 class AthanorAccess:
     lock_access_funcs = defaultdict(list)
     lock_default_funcs = defaultdict(list)
@@ -331,7 +407,7 @@ class AthanorBase(AthanorLowBase):
             )
 
 
-class AthanorObject(AthanorBase):
+class AthanorObject(AthanorHandler, AthanorBase):
     def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
         """
         Emits something to a session attached to the object.
@@ -463,3 +539,6 @@ class AthanorObject(AthanorBase):
         if not self.account:
             return False
         return self.account.uses_screenreader(session=session)
+
+    def get_room_display_name(self, looker, **kwargs):
+        return self.get_display_name(looker, **kwargs)

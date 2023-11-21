@@ -219,7 +219,7 @@ class AthanorRoom(AthanorObject, DefaultRoom):
         contents_map = self.get_visible_contents(looker, **kwargs)
         out = list()
 
-        for content_type in ("characters", "items"):
+        for content_type in ("characters", "things"):
             if content_obj := contents_map.get(content_type, None):
                 for obj in content_obj:
                     out.append(self.get_list_display_for(obj, looker, **kwargs))

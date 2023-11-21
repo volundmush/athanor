@@ -1,5 +1,6 @@
 from rich.color import ColorSystem
 from django.conf import settings
+from evennia.commands.cmdhandler import cmdhandler
 from evennia.server.serversession import ServerSession
 from evennia.utils.utils import lazy_property
 from rich.highlighter import ReprHighlighter
@@ -18,6 +19,10 @@ class AthanorServerSession(ServerSession):
     """
     ServerSession class which integrates the Rich Console into Evennia.
     """
+
+    def __init__(self):
+        super().__init__()
+        self.text_callable = None
 
     @lazy_property
     def console(self):

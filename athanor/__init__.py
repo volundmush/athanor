@@ -27,6 +27,8 @@ OBJECT_CHARACTER_DEFAULT_LOCKS = defaultdict(list)
 OBJECT_EXIT_DEFAULT_LOCKS = defaultdict(list)
 OBJECT_ROOM_DEFAULT_LOCKS = defaultdict(list)
 
+HANDLERS = defaultdict(dict)
+
 
 def _apply_settings(settings):
     settings.MULTISESSION_MODE = 3
@@ -236,6 +238,8 @@ def _apply_settings(settings):
     # if False, they will remain in the rooms, but simply are offline. It's best to use room formatters to
     # hide them?
     settings.OFFLINE_CHARACTERS_VOID_STORAGE = True
+
+    settings.ATHANOR_HANDLERS = defaultdict(dict)
 
 
 def init(settings, plugins=None):
