@@ -185,6 +185,7 @@ def _apply_settings(settings):
         "puppet": "pperm(Developer)",
         "teleport": "true()",
         "teleport_here": "true()",
+        "view": "all()",
     }
 
     character_default_locks = object_default_locks.copy()
