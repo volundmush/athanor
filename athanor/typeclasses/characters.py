@@ -21,10 +21,6 @@ class AthanorCharacter(AthanorObject, DefaultCharacter):
         All characters can be puppeted by the Account they are assigned to,
         as a basic assumption.
         """
-        # TODO: This is awaiting a PR from Evennia...
-        # Returning true by default for the moment.
-        return True
-
         if not (
             account := self.attributes.get("account", category="system", default=None)
         ):

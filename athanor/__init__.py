@@ -242,6 +242,8 @@ def _apply_settings(settings):
 
     settings.ATHANOR_HANDLERS = defaultdict(dict)
 
+    settings.COMMAND_DEFAULT_CLASS = "athanor.commands.AthanorCommand"
+
 
 def init(settings, plugins=None):
     _apply_settings(settings)
