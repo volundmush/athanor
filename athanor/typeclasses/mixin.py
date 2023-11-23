@@ -487,6 +487,18 @@ class AthanorObject(AthanorHandler, AthanorBase):
             kwargs: The outputfuncs dictionary being built up for this .msg() operation.
         """
         if text is not None:
+            if isinstance(text, (tuple, list)):
+                split_text, kw = text
+                if hasattr(split_text, "__rich_console__"):
+                    kwargs["rich"] = (split_text, kw)
+                    text = None
+                else:
+                    kwargs["text"] = text
+            elif hasattr(text, "__rich_console__"):
+                kwargs["rich"] = text
+                text = None
+
+        if text is not None:
             if not (isinstance(text, str) or isinstance(text, tuple)):
                 # sanitize text before sending across the wire
                 try:

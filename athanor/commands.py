@@ -184,7 +184,7 @@ class _AthanorCommandMixin:
         """
 
         args = list(args)
-        kwargs = dict(kwargs)
+        kwargs = dict(**kwargs)
 
         if len(args):
             if isinstance(args[0], (list, tuple)):
@@ -195,6 +195,16 @@ class _AthanorCommandMixin:
             elif hasattr(args[0], "__rich_console__"):
                 kwargs["rich"] = args[0]
                 args = args[1:]
+
+        if "text" in kwargs:
+            if isinstance(kwargs["text"], (list, tuple)):
+                text, kw = kwargs["text"]
+                if hasattr(text, "__rich_console__"):
+                    kwargs["rich"] = (text, kw)
+                    del kwargs["text"]
+            elif hasattr(kwargs["text"], "__rich_console__"):
+                kwargs["rich"] = kwargs["text"]
+                del kwargs["text"]
 
         super().msg(*args, **kwargs)
 
