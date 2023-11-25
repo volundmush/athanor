@@ -179,12 +179,10 @@ def at_server_cold_start():
     # Cleanup all AthanorPlayerCharacters that are online...
     # but can't be, because we crashed. This should put them all
     # into storage and update all time trackers.
-    from athanor.typeclasses.characters import AthanorPlayerCharacter
+    from athanor.playviews import DefaultPlayview
 
-    for obj in AthanorPlayerCharacter.objects.get_by_tag(
-        key="puppeted", category="account"
-    ):
-        obj.at_post_unpuppet(last_logout=obj.db.last_online, shutdown=True)
+    for pv in DefaultPlayview.objects.all():
+        pv.at_cold_start()
 
 
 def at_server_cold_stop():
@@ -192,4 +190,7 @@ def at_server_cold_stop():
     This is called only when the server goes down due to a shutdown or
     reset.
     """
-    pass
+    from athanor.playviews import DefaultPlayview
+
+    for pv in DefaultPlayview.objects.all():
+        pv.at_cold_stop()

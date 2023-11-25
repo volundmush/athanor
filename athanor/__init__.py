@@ -56,11 +56,9 @@ def _apply_settings(settings):
     }
 
     settings.BASE_CHARACTER_TYPECLASS = (
-        "athanor.typeclasses.characters.AthanorPlayerCharacter"
+        "athanor.typeclasses.characters.AthanorCharacter"
     )
-    settings.BASE_NPC_TYPECLASS = (
-        "athanor.typeclasses.characters.AthanorNonPlayerCharacter"
-    )
+
     settings.BASE_ITEM_TYPECLASS = "athanor.typeclasses.items.AthanorItem"
     settings.BASE_OBJECT_TYPECLASS = settings.BASE_ITEM_TYPECLASS
     settings.BASE_ROOM_TYPECLASS = "athanor.typeclasses.rooms.AthanorRoom"
@@ -248,6 +246,8 @@ def _apply_settings(settings):
     # The number of seconds to wait between each call to the playtime command.
     # This is also how many seconds will be added to playtime.
     settings.PLAYTIME_INTERVAL = 1
+
+    settings.BASE_PLAYVIEW_TYPECLASS = "athanor.playviews.DefaultPlayview"
 
 
 def init(settings, plugins=None):

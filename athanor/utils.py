@@ -147,7 +147,9 @@ def validate_name(
 
 
 def online_characters():
-    return {sess.puppet for sess in SESSION_HANDLER.get_sessions() if sess.puppet}
+    from .playviews import DefaultPlayview
+
+    return {playview.id for playview in DefaultPlayview.objects.all()}
 
 
 def format_for_nobody(template: str, mapping: dict = None) -> str:
@@ -389,19 +391,15 @@ def ip_from_request(request, exclude=None) -> str:
 
 
 def increment_playtime():
-    from .utils import online_characters, online_accounts
+    from .playviews import DefaultPlayview
 
     accounts = defaultdict(list)
 
     for account in online_accounts():
         accounts[account] = list()
 
-    for character in online_characters():
-        if not (account := character.account):
-            continue
-        if not character.is_player():
-            continue
-        accounts[account].append(character)
+    for playview in DefaultPlayview.objects.all():
+        accounts[playview].append(playview.id)
 
     for account, characters in accounts.items():
         account.increment_playtime(settings.PLAYTIME_INTERVAL, characters)

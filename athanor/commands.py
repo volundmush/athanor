@@ -3,10 +3,11 @@ Implements Athanor-specific command infrastructure and helper utilities to make 
 commands a much easier and more streamlined task.
 """
 import typing
-from evennia.utils.utils import lazy_property
+import evennia
+from evennia.utils.utils import lazy_property, inherits_from
 from evennia.utils.ansi import ANSIString
 from evennia.commands.default.muxcommand import MuxCommand, MuxAccountCommand
-from athanor.utils import Operation, ev_to_rich
+from athanor.utils import Operation, ev_to_rich, utcnow
 from rich.abc import RichRenderable
 from rich.table import Table
 from rich.box import ASCII2
@@ -96,6 +97,7 @@ class _AthanorCommandMixin:
         """
         if getattr(self, "_buffer_created", False):
             self.buffer.flush()
+        self.record_idle_time()
 
     def operation(self, **kwargs) -> Operation:
         """
@@ -208,13 +210,21 @@ class _AthanorCommandMixin:
 
         super().msg(*args, **kwargs)
 
+    def record_idle_time(self):
+        playview = None
+        if self.session:
+            playview = self.session.playview
+        if not playview:
+            if inherits_from(self.caller, evennia.DefaultObject):
+                playview = getattr(self.caller, "playview", None)
+        if playview:
+            playview.last_active = utcnow()
+
 
 class AthanorCommand(_AthanorCommandMixin, MuxCommand):
     """
     This is a base command for all Athanor commands.
     """
-
-    pass
 
 
 class AthanorAccountCommand(_AthanorCommandMixin, MuxAccountCommand):

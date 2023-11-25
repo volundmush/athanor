@@ -2,11 +2,11 @@ import math
 import datetime
 
 from django.conf import settings
+from django.utils.translation import gettext as _
 from evennia.accounts.accounts import DefaultAccount, CharactersHandler
-from evennia.utils import lazy_property
+from evennia.utils import lazy_property, class_from_module
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
-
 from rich.table import Table
 from rich.box import ASCII2
 
@@ -49,6 +49,7 @@ class AthanorCharactersHandler(CharactersHandler):
 class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
     lock_access_funcs = athanor.ACCOUNT_ACCESS_FUNCTIONS
     _content_types = ("account",)
+    playview_typeclass = settings.BASE_PLAYVIEW_TYPECLASS
 
     @lazy_property
     def characters(self):
@@ -313,3 +314,58 @@ class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
         Returns the total playtime for this account.
         """
         return self.playtime.total_playtime
+
+    def check_character_count(self, session) -> bool:
+        count = self.playviews.count()
+        max_puppets = settings.MAX_NR_SIMULTANEOUS_PUPPETS
+        if settings.MULTISESSION_MODE >= 2:
+            if self.is_superuser or self.check_permstring("Developer"):
+                return True
+        else:
+            max_puppets = 1
+        if count > max_puppets:
+            session.msg(f"You cannot control any more characters (max {max_puppets})")
+            return False
+        return not count
+
+    def puppet_object(self, session, obj):
+        """
+        Use the given session to control (puppet) the given object (usually
+        a Character type).
+
+        Args:
+            session (Session): session to use for puppeting
+            obj (Object): the object to start puppeting
+
+        Raises:
+            RuntimeError: If puppeting is not possible, the
+                `exception.msg` will contain the reason.
+
+
+        """
+        # safety checks
+        if not obj:
+            raise RuntimeError("Object not found")
+        if not session:
+            raise RuntimeError("Session not found")
+        if getattr(session, "playview", None):
+            # already puppeting this object
+            session.msg("This session is already puppeting a character.")
+            return
+        if not obj.access(self, "puppet"):
+            # no access
+            session.msg(f"You don't have permission to puppet '{obj.key}'.")
+            return
+
+        if playview := getattr(obj, "playview", None):
+            if self != obj.playview.account:
+                session.msg(
+                    f"{obj.playview.account} is currently logged in as {obj.key}."
+                )
+        else:
+            if not self.check_character_count(session):
+                return
+            playview_class = class_from_module(self.playview_typeclass)
+            playview = playview_class.create(self, obj)
+
+        playview.add_session(session)
