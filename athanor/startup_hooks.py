@@ -17,6 +17,8 @@ at_server_cold_stop()
 
 """
 
+_PLAYTIME_TRACKER = None
+
 
 def web_admin_apps(self, request, app_label=None):
     """
@@ -63,7 +65,7 @@ def at_server_start():
     # from athanor.mudrich import install_mudrich
     # install_mudrich()
 
-    from evennia.utils import callables_from_module, class_from_module, logger
+    from evennia.utils import callables_from_module, class_from_module, logger, repeat
     from django.conf import settings
     import athanor
     from athanor.utils import register_access_functions, register_lock_functions
@@ -110,13 +112,49 @@ def at_server_start():
             logger.log_trace()
             continue
 
+    from evennia.server import signals
+
+    from .signal_handlers import (
+        login_success,
+        login_fail,
+        django_login_fail,
+        django_login_success,
+    )
+
+    signals.SIGNAL_ACCOUNT_POST_LOGIN.connect(login_success)
+    signals.SIGNAL_ACCOUNT_POST_LOGIN_FAIL.connect(login_fail)
+
+    from django.contrib.auth.signals import (
+        user_logged_in,
+        user_logged_out,
+        user_login_failed,
+    )
+
+    user_logged_in.connect(django_login_success)
+    user_login_failed.connect(django_login_fail)
+
+    global _PLAYTIME_TRACKER
+    from .utils import increment_playtime
+
+    _PLAYTIME_TRACKER = repeat(
+        settings.PLAYTIME_INTERVAL,
+        increment_playtime,
+        persistent=False,
+        idstring="playtime",
+    )
+
 
 def at_server_stop():
     """
     This is called just before the server is shut down, regardless
     of it is for a reload, reset or shutdown.
     """
-    pass
+    from evennia.utils import unrepeat
+
+    global _PLAYTIME_TRACKER
+    if _PLAYTIME_TRACKER:
+        unrepeat(_PLAYTIME_TRACKER)
+        _PLAYTIME_TRACKER = None
 
 
 def at_server_reload_start():

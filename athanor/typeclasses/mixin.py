@@ -408,6 +408,14 @@ class AthanorBase(AthanorLowBase):
 
 
 class AthanorObject(AthanorHandler, AthanorBase):
+    def is_player(self) -> bool:
+        """
+        Many kinds of objects can be puppeted, but only some are player characters.
+        Whether something's a player character or not may have devastating impact
+        on how commands and various code behaves.
+        """
+        return False
+
     def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
         """
         Emits something to a session attached to the object.
@@ -554,3 +562,41 @@ class AthanorObject(AthanorHandler, AthanorBase):
 
     def get_room_display_name(self, looker, **kwargs):
         return self.get_display_name(looker, **kwargs)
+
+    def at_total_playtime_update(self, new_total: int):
+        """
+        This is called every time the total playtime is updated.
+        You could use this to enforce all kinds of rules,
+        or maybe for veteran rewards.
+        """
+        pass
+
+    def at_account_playtime_update(self, account, new_total: int):
+        """
+        This is called every time the playtime is updated per-account.
+        You could use this to enforce all kinds of rules,
+        or maybe for veteran rewards.
+
+        Args:
+            account (Account): The account whose playtime was updated.
+            new_total (int): The new total playtime for this account.
+        """
+        pass
+
+    @property
+    def playtime(self):
+        from athanor.models import CharacterPlaytime
+
+        return CharacterPlaytime.objects.get_or_create(id=self)[0]
+
+    def get_playtime(self, account=None) -> int:
+        """
+        Returns the total playtime for this character, optionally for a specific account.
+        """
+        p = self.playtime
+        if account:
+            ca = p.per_account.filter(account=account).first()
+            if ca:
+                return ca.total_playtime
+            return 0
+        return p.total_playtime

@@ -43,16 +43,17 @@ The majority of my vision is based on experience from working with RPI MUDs and 
   * Composable CmdSets
   * Extended Options/Style System.
   * Heavily extended/modified Evennia Lock system.
+  * Login tracking that keeps track of who's logging in from where, when.
+  * Playtime tracking - track how long accounts and characters are online. Even tracks characters-per-account for if characters change hands.
 
 ## OFFICIAL PLUGINS
   * A Myrrdin-style [BBS](https://github.com/volundmush/athanor_boards) with Board Collections and prefixes to organize boards for IC and OOC purposes. Similar to Forums, but with a classic MUX/MUSH feel.
   * Django-wiki integration via [Wiki](https://github.com/volundmush/athanor_wiki), for a wiki system. Many games use Wikis to list information about game setting, rules, and etc.
   * Django-helpdesk integration via [Helpdesk](https://github.com/volundmush/athanor_helpdesk) for an Issue Tracker and Knowledgebase.
   * Tabletop game packages such as [Storyteller](https://github.com/volundmush/storyteller) (WoD, Exalted, etc). This plugin is actually a family of plugins for supporting different games.
-  * A [Login Tracker](https://github.com/volundmush/athanor_login) that keeps track of who's logging in from where, when.
   * A [Faction System](https://github.com/volundmush/athanor_factions) for organizing guilds, organizations, and other such groups. Well-integrated with the lock system for Faction membership checks. Factions may be hierarchial, with sub-factions.
   * A [Zone System](https://github.com/volundmush/athanor_zones) for organizing Rooms, Exits, and other Objects into Zones. Zones themselves can be arranged in a tree-like hierarchy.
-  * The [Roleplay System](https://github.com/volundmush/athanor_roleplay) provides scheduling and logging tools for roleplay sessions.
+  * The [Roleplay System](https://github.com/volundmush/athanor_roleplay) provides scheduling and logging tools for roleplay sessions. (COMING SOON)
   * The [Backscroll System](https://github.com/volundmush/athanor_backscroll) records a configurable amount of text backscroll for each character, allowing players to catch up on missed activity.
 
 

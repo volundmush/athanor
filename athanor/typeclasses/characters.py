@@ -16,16 +16,12 @@ class AthanorCharacter(AthanorObject, DefaultCharacter):
     _content_types = ("character",)
     lockstring = ""
 
-    def access_check_puppet(self, accessing_obj, **kwargs):
+    def is_player(self):
         """
-        All characters can be puppeted by the Account they are assigned to,
-        as a basic assumption.
+        The default Athanor assumption is that all AthanorCharacters are player characters.
+        If this is not the case, put logic here to answer the question.
         """
-        if not (
-            account := self.attributes.get("account", category="system", default=None)
-        ):
-            return False
-        return account == accessing_obj
+        return True
 
     def basetype_setup(self):
         """
@@ -34,47 +30,16 @@ class AthanorCharacter(AthanorObject, DefaultCharacter):
         # add the default cmdset
         self.cmdset.add_default(settings.CMDSET_CHARACTER, persistent=True)
 
-    def at_pre_move(self, destination: typing.Optional[DefaultObject], **kwargs):
+    def access_check_puppet(self, accessing_obj, **kwargs):
         """
-        Called just before moving object to destination.
-        If returns False, move is cancelled.
+        All characters can be puppeted by the Account they are assigned to,
+        as a basic assumption.
         """
-        if not destination:
-            return True
-
-        # Characters may only exist inside Rooms, Sectors, or Grids.
-        return any(
-            ctype in destination._content_types for ctype in ("room", "grid", "sector")
-        )
-
-    def at_object_receive(
-        self,
-        obj: DefaultObject,
-        source_location: typing.Optional[DefaultObject],
-        move_type="move",
-        **kwargs,
-    ):
-        """
-        Called after an object has been moved into this object.
-
-        Anything inside a character is an item, in their inventory or equipped.
-
-        It's assumed that coordinate 0 is the character's inventory, and coordinates 1+ are their equipment slots.
-        """
-        obj.db.coordinates = 0
-
-
-class AthanorPlayerCharacter(AthanorCharacter):
-    """
-    This is the base for all Player Characters.
-
-    Note that Athanor only supports PCs as direct Puppets. Use the 'possess' framework
-    to allow PCs to control NPCs or other entities.
-    """
-
-    is_player = True
-
-    _content_types = ("character", "player")
+        if not self.is_player():
+            return False
+        if not (ao := getattr(self, "account_owner", None)):
+            return False
+        return ao.account == accessing_obj
 
     def at_post_puppet(self, **kwargs):
         """
@@ -89,9 +54,6 @@ class AthanorPlayerCharacter(AthanorCharacter):
         instead of this method.
         """
         if self.sessions.count() == 1:
-            # Add to the CHARACTERS_ONLINE set for easy indexing of who list and
-            # activity tracking.
-            athanor.CHARACTERS_ONLINE.add(self)
             self.at_login()
         else:
             self.msg(f"\nYou become |c{self.get_display_name(self)}|n.\n")
@@ -105,6 +67,16 @@ class AthanorPlayerCharacter(AthanorCharacter):
         """
         A simple, easily overloaded hook called when a character first joins the game.
         """
+        if self.is_player():
+            now = utcnow()
+            p = self.playtime
+            p.last_login = now
+            p.save(update_fields=["last_login"])
+
+            ca = p.per_account.get_or_create(account=self.account)[0]
+            ca.last_login = now
+            ca.save(update_fields=["last_login"])
+
         self.announce_join_game()
 
     def announce_join_game(self):
@@ -117,10 +89,29 @@ class AthanorPlayerCharacter(AthanorCharacter):
                 settings.ACTION_TEMPLATES.get("login"), exclude=[self], from_obj=self
             )
 
+    def at_pre_unpuppet(self):
+        if self.sessions.count() == 1:
+            self.at_pre_logout()
+
     def at_post_unpuppet(self, account=None, session=None, **kwargs):
         super().at_post_unpuppet(account=account, session=session, **kwargs)
         if not self.sessions.count() or kwargs.get("shutdown", False):
             self.at_logout()
+
+    def at_pre_logout(self):
+        """
+        This is called just before the last session disconnects, while self.account
+        is still valid.
+        """
+        if self.is_player():
+            now = utcnow()
+            p = self.playtime
+            p.last_logout = now
+            p.save(update_fields=["last_logout"])
+
+            ca = p.per_account.get_or_create(account=self.account)[0]
+            ca.last_logout = now
+            ca.save(update_fields=["last_logout"])
 
     def at_logout(self):
         """
@@ -128,8 +119,6 @@ class AthanorPlayerCharacter(AthanorCharacter):
         """
         self.announce_leave_game()
         self.stow()
-        if self in athanor.CHARACTERS_ONLINE:
-            athanor.CHARACTERS_ONLINE.remove(self)
 
     def announce_leave_game(self):
         # this should ALWAYS be true, but in case something weird's going on...
@@ -139,6 +128,9 @@ class AthanorPlayerCharacter(AthanorCharacter):
             )
 
     def stow(self):
+        if not self.is_player():
+            return
+
         if not settings.OFFLINE_CHARACTERS_VOID_STORAGE:
             return
 

@@ -2,7 +2,8 @@ import math
 import datetime
 
 from django.conf import settings
-from evennia.accounts.accounts import DefaultAccount
+from evennia.accounts.accounts import DefaultAccount, CharactersHandler
+from evennia.utils import lazy_property
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
 
@@ -10,20 +11,48 @@ from rich.table import Table
 from rich.box import ASCII2
 
 import athanor
+from athanor.utils import utcnow
 from .mixin import AthanorLowBase, AthanorHandler
+
+
+class AthanorCharactersHandler(CharactersHandler):
+    def _ensure_playable_characters(self):
+        # Overriden to do nothing. This method is rendered unnecessary thanks to Django.
+        return
+
+    def _clean(self):
+        # Overriden to do nothing. This method is rendered unnecessary thanks to Django.
+        return
+
+    def add(self, character):
+        if not (owner := getattr(character, "account_owner", None)):
+            from athanor.models import AccountOwner
+
+            AccountOwner.objects.create(id=character, account=self.owner)
+        else:
+            owner.account = self.account
+            owner.save(update_fields=["account"])
+        self.owner.at_post_add_character(character)
+
+    def remove(self, character):
+        if owner := getattr(character, "account_owner", None):
+            owner.delete()
+        self.owner.at_post_remove_character(character)
+
+    def all(self):
+        return [c.id for c in self.owner.owned_characters.all()]
+
+    def count(self):
+        return self.owner.owned_characters.count()
 
 
 class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
     lock_access_funcs = athanor.ACCOUNT_ACCESS_FUNCTIONS
     _content_types = ("account",)
 
-    def at_post_add_character(self, character):
-        super().at_post_add_character(character)
-        character.attributes.add("account", category="system", value=self)
-
-    def at_post_remove_character(self, character):
-        super().at_post_add_character(character)
-        character.attributes.remove("account", category="system")
+    @lazy_property
+    def characters(self):
+        return AthanorCharactersHandler(self)
 
     def uses_screenreader(self, session=None):
         return super().uses_screenreader(session=session) or self.options.get(
@@ -230,3 +259,57 @@ class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
         tz = self.options.get("timezone")
         dt = dt.astimezone(tz)
         return dt.strftime(template)
+
+    @property
+    def playtime(self):
+        from athanor.models import AccountPlaytime
+
+        return AccountPlaytime.objects.get_or_create(id=self)[0]
+
+    def at_post_login(self, session=None, **kwargs):
+        """
+        Modified to track login time.
+        """
+        p = self.playtime
+        p.last_login = utcnow()
+        p.save(update_fields=["last_login"])
+        super().at_post_login(session=session, **kwargs)
+
+    def at_post_disconnect(self):
+        """
+        Modified to track logout time.
+        """
+        if not self.is_connected:
+            p = self.playtime
+            p.last_logout = utcnow()
+            p.save(update_fields=["last_logout"])
+        super().at_post_disconnect()
+
+    def increment_playtime(self, value, characters):
+        p = self.playtime
+        p.total_playtime += value
+        p.save(update_fields=["total_playtime"])
+        self.at_total_playtime_update(p.total_playtime)
+
+        for character in characters:
+            c = character.playtime
+            c.total_playtime += value
+            c.save(update_fields=["total_playtime"])
+            character.at_total_playtime_update(c.total_playtime)
+
+            ca = c.per_account.get_or_create(account=self)[0]
+            ca.total_playtime += value
+            ca.save(update_fields=["total_playtime"])
+            character.at_account_playtime_update(self, ca.total_playtime)
+
+    def at_total_playtime_update(self, new_total: int):
+        """
+        This is called every time the total playtime is updated.
+        """
+        pass
+
+    def get_playtime(self) -> int:
+        """
+        Returns the total playtime for this account.
+        """
+        return self.playtime.total_playtime

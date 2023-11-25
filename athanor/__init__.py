@@ -31,6 +31,7 @@ HANDLERS = defaultdict(dict)
 
 
 def _apply_settings(settings):
+    settings.INSTALLED_APPS.append("athanor")
     settings.MULTISESSION_MODE = 3
     settings.AUTO_CREATE_CHARACTER_WITH_ACCOUNT = False
     settings.AUTO_PUPPET_ON_LOGIN = False
@@ -243,6 +244,10 @@ def _apply_settings(settings):
     settings.ATHANOR_HANDLERS = defaultdict(dict)
 
     settings.COMMAND_DEFAULT_CLASS = "athanor.commands.AthanorCommand"
+
+    # The number of seconds to wait between each call to the playtime command.
+    # This is also how many seconds will be added to playtime.
+    settings.PLAYTIME_INTERVAL = 1
 
 
 def init(settings, plugins=None):

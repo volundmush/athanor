@@ -76,7 +76,15 @@ class AthanorLockHandler(LockHandler):
             evalstring, func_tup, raw_string = lockdef
             # execute all lock funcs in the correct order, producing a tuple of True/False results.
             true_false = tuple(
-                bool(tup[0](accessing_obj, self.obj, *tup[1], **tup[2]))
+                bool(
+                    tup[0](
+                        accessing_obj,
+                        self.obj,
+                        *tup[1],
+                        access_type=access_type,
+                        **tup[2],
+                    )
+                )
                 for tup in func_tup
             )
             # the True/False tuple goes into evalstring, which combines them
