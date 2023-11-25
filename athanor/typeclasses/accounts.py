@@ -4,7 +4,7 @@ import datetime
 from django.conf import settings
 from django.utils.translation import gettext as _
 from evennia.accounts.accounts import DefaultAccount, CharactersHandler
-from evennia.utils import lazy_property, class_from_module, make_iter
+from evennia.utils import lazy_property, class_from_module, make_iter, dedent
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
 from evennia.server import signals
@@ -31,7 +31,7 @@ class AthanorCharactersHandler(CharactersHandler):
 
             AccountOwner.objects.create(id=character, account=self.owner)
         else:
-            owner.account = self.account
+            owner.account = self.owner
             owner.save(update_fields=["account"])
         self.owner.at_post_add_character(character)
 
@@ -388,3 +388,122 @@ class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
             if obj:
                 playview = obj.playview
                 playview.remove_session(session)
+
+    ooc_appearance_template = dedent(
+        """
+    {header}
+
+    {sessions}
+
+    {commands}
+
+    {characters}
+    
+    {footer}
+    """
+    ).strip()
+
+    def at_look_header(self, session=None, **kwargs):
+        return self.styled_header(f"Account Menu: {self.key}")
+
+    def at_look_sessions(self, session=None, **kwargs):
+        sessions = self.sessions.all()
+        if not sessions:
+            return ""
+
+        sess_strings = []
+        for isess, sess in enumerate(sessions):
+            ip_addr = (
+                sess.address[0] if isinstance(sess.address, tuple) else sess.address
+            )
+            addr = f"{sess.protocol_key} ({ip_addr})"
+            sess_str = (
+                f"|w* {isess + 1}|n"
+                if session and session.sessid == sess.sessid
+                else f"  {isess + 1}"
+            )
+
+            sess_strings.append(f"{sess_str} {addr}")
+
+        return "|wConnected session(s):|n\n" + "\n".join(sess_strings)
+
+    def at_look_commands(self, session=None, **kwargs):
+        out = list()
+        for cmd, desc in (
+            ("|whelp|n", "more commands"),
+            ("|wpublic <text>|n", "talk on public channel"),
+            ("|wcharcreate <name> [=description]|n", "create new character"),
+            ("|wchardelete <name>|n", "delete a character"),
+            ("|wic <name>|n", "enter the game as character (|wooc|n to get back here)"),
+            ("|wic|n", "enter the game as latest character controlled."),
+        ):
+            out.append(f"  {cmd} - {desc}")
+
+        return "\n".join(out)
+
+    def at_look_footer(self, session=None, **kwargs):
+        return str(self.styled_footer())
+
+    def at_look_characters(self, session=None, **kwargs):
+        characters = self.characters.all()
+        sessions = self.sessions.all()
+
+        if not characters:
+            txt_characters = "You don't have a character yet. Use |wcharcreate|n."
+        else:
+            max_chars = (
+                "unlimited"
+                if self.is_superuser or settings.MAX_NR_CHARACTERS is None
+                else settings.MAX_NR_CHARACTERS
+            )
+
+            char_strings = []
+            for char in characters:
+                csessions = char.sessions.all()
+                if csessions:
+                    for sess in csessions:
+                        # character is already puppeted
+                        sid = sess in sessions and sessions.index(sess) + 1
+                        if sess and sid:
+                            char_strings.append(
+                                f" - |G{char.name}|n [{', '.join(char.permissions.all())}] "
+                                f"(played by you in session {sid})"
+                            )
+                        else:
+                            char_strings.append(
+                                f" - |R{char.name}|n [{', '.join(char.permissions.all())}] "
+                                "(played by someone else)"
+                            )
+                else:
+                    # character is "free to puppet"
+                    char_strings.append(
+                        f" - {char.name} [{', '.join(char.permissions.all())}]"
+                    )
+
+            return (
+                f"Available character(s) ({len(characters)}/{max_chars}, |wic <name>|n to play):|n\n"
+                + "\n".join(char_strings)
+            )
+
+    def at_look(self, session=None, **kwargs):
+        """
+        Called when this object executes a look. It allows to customize
+        just what this means.
+
+        Args:
+            session (Session, optional): The session doing this look.
+            **kwargs (dict): Arbitrary, optional arguments for users
+                overriding the call (unused by default).
+
+        Returns:
+            look_string (str): A prepared look string, ready to send
+                off to any recipient (usually to ourselves)
+
+        """
+        sections = dict()
+        for section in ("header", "sessions", "commands", "characters", "footer"):
+            sections[section] = str(
+                getattr(self, f"at_look_{section}")(session=session, **kwargs)
+            )
+
+        return self.ooc_appearance_template.format_map(sections)

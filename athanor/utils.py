@@ -198,12 +198,6 @@ def online_accounts():
     return SESSION_HANDLER.all_connected_accounts()
 
 
-def online_characters():
-    from evennia import search_tag
-
-    return search_tag(key="puppeted", category="account")
-
-
 class OperationError(ValueError):
     pass
 
@@ -391,15 +385,15 @@ def ip_from_request(request, exclude=None) -> str:
 
 
 def increment_playtime():
-    from .playviews import DefaultPlayview
-
     accounts = defaultdict(list)
 
     for account in online_accounts():
         accounts[account] = list()
 
-    for playview in DefaultPlayview.objects.all():
-        accounts[playview].append(playview.id)
+    for character in online_characters():
+        if not character.account:
+            continue
+        accounts[character.account].append(character)
 
     for account, characters in accounts.items():
         account.increment_playtime(settings.PLAYTIME_INTERVAL, characters)

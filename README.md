@@ -45,6 +45,7 @@ The majority of my vision is based on experience from working with RPI MUDs and 
   * Heavily extended/modified Evennia Lock system.
   * Login tracking that keeps track of who's logging in from where, when.
   * Playtime tracking - track how long accounts and characters are online. Even tracks characters-per-account for if characters change hands.
+  * Playview system (see below) for managing multiple characters, switching puppets in-play, handling graceful login/logout, etc.
 
 ## OFFICIAL PLUGINS
   * A Myrrdin-style [BBS](https://github.com/volundmush/athanor_boards) with Board Collections and prefixes to organize boards for IC and OOC purposes. Similar to Forums, but with a classic MUX/MUSH feel.
@@ -156,6 +157,17 @@ Each ServerSession has its own rich.console.Console instance configured to use E
 Only one of these kwargs should be used at a time. If more than one is used, the last one will be used.
 
 `ServerSession.data_out(**kwargs)` is eventually called by all variants of .msg() on Objects, Accounts, Sessions, and Commands, so, in a command, this could be used with `self.msg(rich=blah)`
+
+### PLAYVIEWS
+Evennia's concept of puppeting ObjectDB instances is amazingly versatile, easily one of its best features. However, I perceive several flaws.
+
+First, its ability to juggle multiple sessions-per-object struggles when confronted with the prospect of trying to 'switch control' to a different object. For instance, if you want to 'remain being character x, but you are controlling a vehicle directly', there is no straightforward way to do it - by default, you would have to shift every connected Session from x to vehicle, which would trigger Evennia to consider character x offline.
+
+Second, the process of having characters login and logout of the game world being handled on the Typeclass could lead to complicated inheritance issues when designing Character typeclasses for players vs NPCs.
+
+Third, Evennia implicitly defines a character being online or offline as whether it has sessions attached or not - there is no concept of a "linkdead" state or similar, which many games may want to have discrete control over. (IE: Should a character immediately logout if it goes linkdead, or should there be a wait period before the character is logged out?)
+
+The Playview is a new type of object which stands "between" Sessions and Objects to address these issues. It holds onto Sessions instead of the Objects, while still tricking Sessions into thinking they're directly attached to the object via .puppet. The playview can change its "current puppet" while still keeping the original character online. As it is a typeclass, it can be replaced/overloaded to dramatically alter its behavior to alter how puppeting works. Lastly, since it implements the logic for announcing players entering the game and storing characters in nullspace when they go offline, that logic has been completely removed from the Character typeclass, which should greatly simplify development of Players vs Non-Player Character logic in typeclasses for many games.
 
 ## FAQ 
   __Q:__ This is cool! How can I help?  
