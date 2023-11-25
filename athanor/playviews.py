@@ -7,7 +7,7 @@ from evennia.typeclasses.models import TypeclassBase
 from evennia.utils.utils import lazy_property, make_iter, logger, to_str
 from evennia.utils.optionhandler import OptionHandler
 from evennia.objects.objects import ObjectSessionHandler
-from evennia.server.signals import SIGNAL_OBJECT_POST_PUPPET
+from evennia.server import signals
 import athanor
 from athanor.typeclasses.mixin import AthanorAccess
 from athanor.utils import utcnow
@@ -16,6 +16,12 @@ from athanor.utils import utcnow
 class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
     system_name = PlayviewManager.system_name
     objects = PlayviewManager()
+
+    def __bool__(self):
+        try:
+            return bool(self.id)
+        except Exception:
+            return False
 
     @property
     def _content_types(self):
@@ -29,7 +35,7 @@ class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
         pass
 
     def add_session(self, session, **kwargs):
-        session._puid = self.id.id
+        session.playview = self
         if self.sessions.count() == 0:
             self.at_init_playview(session, **kwargs)
         # do the connection
@@ -53,7 +59,9 @@ class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
         self.id.tags.add("puppeted", category="account")
         self.id.locks.cache_lock_bypass(self.id)
         self.id.at_post_puppet()
-        SIGNAL_OBJECT_POST_PUPPET.send(sender=self.id, account=self, session=session)
+        signals.SIGNAL_OBJECT_POST_PUPPET.send(
+            sender=self.id, account=self, session=session
+        )
 
     def at_start_playview(self, session, **kwargs):
         self.at_login(**kwargs)
@@ -112,50 +120,13 @@ class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
                 from_obj=self.id,
             )
 
-    def at_logout(self, **kwargs):
-        """
-        A simple, easily overloaded hook called when a character leaves the game.
-        """
-        self.announce_leave_game()
-        self.stow()
-
-    def announce_leave_game(self):
-        # this should ALWAYS be true, but in case something weird's going on...
-        if self.id.location:
-            self.id.location.msg_contents(
-                settings.ACTION_TEMPLATES.get("logout"),
-                exclude=[self.id],
-                from_obj=self.id,
-            )
-
-    def record_logout(self, current_time=None, **kwargs):
-        if current_time is None:
-            current_time = utcnow()
-        p = self.id.playtime
-        p.last_logout = current_time
-        p.save(update_fields=["last_logout"])
-
-        ca = p.per_account.get_or_create(account=self.account)[0]
-        ca.last_logout = current_time
-        ca.save(update_fields=["last_logout"])
-
-    def stow(self):
-        if not settings.OFFLINE_CHARACTERS_VOID_STORAGE:
-            return
-
-        # this should ALWAYS be true, but in case something weird's going on...
-        if not self.id.location:
-            return
-
-        self.id.db.prelogout_location = self.id.location
-        self.id.location.at_object_leave(self.id, None, stowed=True)
-        self.id.location = None
-
     @classmethod
     def create(cls, account, character):
-        return cls.objects.create(
+        obj = cls.objects.create(
             id=character, account=account, db_puppet=character, db_key=character.key
         )
+        obj.save()
+        return obj
 
     def execute_look(self, **kwargs):
         self.msg(f"\nYou become |c{self.get_display_name(self)}|n.\n")
@@ -172,7 +143,15 @@ class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
     def db(self):
         return self.id.db
 
-    def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
+    def msg(
+        self,
+        text=None,
+        from_obj=None,
+        session=None,
+        options=None,
+        source=None,
+        **kwargs,
+    ):
         """
         Emits something to a session attached to the object.
 
@@ -191,6 +170,8 @@ class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
                 depends on the MULTISESSION_MODE.
             options (dict, optional): Message-specific option-value
                 pairs. These will be applied at the protocol level.
+            source (obj, optional): Source object of the message. This is the object
+                relaying text. It's likely self.id or self.puppet
         Keyword Args:
             any (string or tuples): All kwarg keys not listed above
                 will be treated as send-command names and their arguments
@@ -319,15 +300,122 @@ class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
     def at_msg_receive(self, text=None, from_obj=None, **kwargs):
         return True
 
+    def at_logout(self, **kwargs):
+        """
+        A simple, easily overloaded hook called when a character leaves the game.
+        """
+        self.announce_leave_game()
+        self.cleanup()
+
+    def announce_leave_game(self):
+        # this should ALWAYS be true, but in case something weird's going on...
+        if self.id.location:
+            self.id.location.msg_contents(
+                settings.ACTION_TEMPLATES.get("logout"),
+                exclude=[self.id],
+                from_obj=self.id,
+            )
+
+    def record_logout(self, current_time=None, **kwargs):
+        if current_time is None:
+            current_time = utcnow()
+        p = self.id.playtime
+        p.last_logout = current_time
+        p.save(update_fields=["last_logout"])
+
+        ca = p.per_account.get_or_create(account=self.account)[0]
+        ca.last_logout = current_time
+        ca.save(update_fields=["last_logout"])
+
+    def stow(self, **kwargs):
+        if not settings.OFFLINE_CHARACTERS_VOID_STORAGE:
+            return
+
+        # this should ALWAYS be true, but in case something weird's going on...
+        if not self.id.location:
+            return
+
+        self.id.db.prelogout_location = self.id.location
+        self.id.location.at_object_leave(self.id, None, stowed=True)
+        self.id.location = None
+
     def at_cold_start(self, **kwargs):
         """
         Called by Athanor when the game starts up cold. This needs to clean up the playview.
         """
-        self.stow()
+        self.cleanup(current_time=None, **kwargs)
+
+    def at_cold_stop(self, **kwargs):
+        self.cleanup(current_time=None, **kwargs)
+
+    def cleanup(self, current_time=None, **kwargs):
+        self.stow(**kwargs)
+
+        for sess in self.sessions.all():
+            self.remove_session(sess, logout_type="cleanup", **kwargs)
+
+        self.record_logout(current_time=current_time, **kwargs)
         self.id.tags.remove("puppeted", category="account")
         self.delete()
 
-    def at_cold_stop(self, **kwargs):
-        self.stow()
-        self.id.tags.remove("puppeted", category="account")
-        self.delete()
+    def remove_session(self, session, logout_type="disconnect", **kwargs):
+        self.sessions.remove(session)
+        session.playview = None
+        signals.SIGNAL_OBJECT_POST_UNPUPPET.send(
+            sender=self.id, session=session, account=self.account
+        )
+        if logout_type == "disconnect":
+            self.at_disconnect(session=session, **kwargs)
+            if self.sessions.count() == 0:
+                self.at_no_sessions(logout_type=logout_type, **kwargs)
+
+    def at_disconnect(self, session, **kwargs):
+        """
+        Called when a session is disconnected unexpectedly.
+        """
+        self.announce_linkdead()
+
+    def announce_linkdead(self):
+        if self.sessions.count() == 0:
+            if self.id.location:
+                self.id.location.msg_contents(
+                    settings.ACTION_TEMPLATES.get("linkdead"),
+                    exclude=[self.id],
+                    from_obj=self.id,
+                )
+        else:
+            if self.id.location:
+                self.id.location.msg_contents(
+                    settings.ACTION_TEMPLATES.get("linklost"),
+                    from_obj=self.id,
+                )
+            else:
+                self.msg("|rYou lost a link.|n")
+
+    def at_no_sessions(self, logout_type="disconnect", **kwargs):
+        """
+        Called when the last session is disconnected UNEXPECTEDLY.
+        """
+        self.at_logout(logout_type=logout_type, **kwargs)
+
+    def can_quit(self, **kwargs):
+        return True
+
+    def do_quit(self, **kwargs):
+        if not self.can_quit(**kwargs):
+            return
+        account = self.account
+        sessions = self.sessions.all()
+        self.id.msg("You quit the game.")
+        self.account.db._last_puppet = self.id
+        self.at_logout(**kwargs)
+        if settings.AUTO_PUPPET_ON_LOGIN:
+            for session in sessions:
+                self.account.disconnect_session_from_account(session, "quit")
+        else:
+            for session in sessions:
+                session.msg(account.at_look(target=[], session=session))
+
+    def do_remove_session(self, session, logout_type="ooc", **kwargs):
+        self.remove_session(session, logout_type=logout_type, **kwargs)
+        session.msg(self.account.at_look(target=[], session=session))

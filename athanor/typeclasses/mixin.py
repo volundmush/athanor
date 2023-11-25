@@ -13,6 +13,54 @@ from athanor.utils import SafeDict, partial_match
 from athanor.lockhandler import AthanorLockHandler
 
 
+class PlayviewSessionHandler:
+    """
+    A dummy handler for Objects which relays session-related commands to the Playview.
+
+    """
+
+    def __init__(self, obj):
+        self.obj = obj
+
+    @property
+    def _playview(self):
+        if pv := getattr(
+            self.obj, "puppeting_playview", getattr(self.obj, "playview", None)
+        ):
+            return pv
+        return None
+
+    def get(self, sessid=None):
+        if not (pv := self._playview):
+            return None
+        return pv.sessions.get(sessid=sessid)
+
+    def all(self):
+        if not (pv := self._playview):
+            return []
+        return pv.sessions.all()
+
+    def add(self, session):
+        if not (pv := self._playview):
+            return
+        pv.add_session(session)
+
+    def remove(self, session):
+        if not (pv := self._playview):
+            return
+        pv.remove_session(session)
+
+    def clear(self):
+        if not (pv := self._playview):
+            return
+        pv.sessions.clear()
+
+    def count(self):
+        if not (pv := self._playview):
+            return 0
+        return pv.sessions.count()
+
+
 class Handlers:
     def __init__(self, obj):
         self.obj = obj
@@ -409,10 +457,19 @@ class AthanorBase(AthanorLowBase):
 
 class AthanorObject(AthanorHandler, AthanorBase):
     def msg(self, text=None, from_obj=None, session=None, options=None, **kwargs):
-        if not (playview := getattr(self, "playview", None)):
+        if not (
+            playview := getattr(
+                self, "puppeted_playview", getattr(self, "playview", None)
+            )
+        ):
             return
         playview.msg(
-            text=text, from_obj=from_obj, session=session, options=options, **kwargs
+            text=text,
+            from_obj=from_obj,
+            session=session,
+            options=options,
+            source=self,
+            **kwargs,
         )
 
     def uses_screenreader(self, session=None):
@@ -482,3 +539,7 @@ class AthanorObject(AthanorHandler, AthanorBase):
         if not (playview := getattr(self, "playview", None)):
             return None
         return playview.date_created
+
+    @lazy_property
+    def sessions(self):
+        return PlayviewSessionHandler(self)

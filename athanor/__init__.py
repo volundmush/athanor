@@ -53,6 +53,8 @@ def _apply_settings(settings):
         "semipose": "$You(){text}",
         "login": "$You() $conj(have) entered the game.",
         "logout": "$You() $conj(have) left the game.",
+        "linkdead": "$You() $conj(have) gone linkdead.",
+        "linklost": "$You() $conj(have) lost a connection unexpectedly.",
     }
 
     settings.BASE_CHARACTER_TYPECLASS = (
@@ -83,7 +85,7 @@ def _apply_settings(settings):
     settings.CMD_MODULES_UNLOGGEDIN = []
     settings.CMD_MODULES_SESSION = []
     settings.CMD_MODULES_CHARACTER = []
-    settings.CMD_MODULES_ACCOUNT = []
+    settings.CMD_MODULES_ACCOUNT = ["athanor.commands.account"]
 
     settings.AUTOMAP_ENABLED = False
 

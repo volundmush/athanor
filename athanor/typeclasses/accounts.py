@@ -4,9 +4,10 @@ import datetime
 from django.conf import settings
 from django.utils.translation import gettext as _
 from evennia.accounts.accounts import DefaultAccount, CharactersHandler
-from evennia.utils import lazy_property, class_from_module
+from evennia.utils import lazy_property, class_from_module, make_iter
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
+from evennia.server import signals
 from rich.table import Table
 from rich.box import ASCII2
 
@@ -369,3 +370,21 @@ class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
             playview = playview_class.create(self, obj)
 
         playview.add_session(session)
+
+    def unpuppet_object(self, session):
+        """
+        Disengage control over an object.
+
+        Args:
+            session (Session or list): The session or a list of
+                sessions to disengage from their puppets.
+
+        Raises:
+            RuntimeError With message about error.
+
+        """
+        for session in make_iter(session):
+            obj = session.puppet
+            if obj:
+                playview = obj.playview
+                playview.remove_session(session)

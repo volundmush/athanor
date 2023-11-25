@@ -25,7 +25,6 @@ class AthanorServerSession(ServerSession):
         super().__init__()
         self.text_callable = None
         self.playview = None
-        self._puid = None
 
     @lazy_property
     def console(self):
@@ -145,16 +144,19 @@ class AthanorServerSession(ServerSession):
 
     @property
     def puid(self):
-        return self._puid
+        if self.playview:
+            return self.playview.id.id
+        return None
 
     @puid.setter
     def puid(self, value):
-        self._puid = value
         if value is not None:
             obj = evennia.ObjectDB.objects.get(id=value)
             playview = obj.playview
             self.playview = playview
             playview.rejoin_session(self)
+        else:
+            self.playview = None
 
     @property
     def puppet(self):

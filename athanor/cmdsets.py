@@ -41,6 +41,11 @@ class AccountCmdSet(default_cmds.AccountCmdSet):
         Populates the cmdset
         """
         super().at_cmdset_creation()
+        from evennia.commands.default.account import CmdQuit, CmdOOC
+
+        self.remove(CmdQuit)
+        self.remove(CmdOOC)
+
         for cmd in athanor.CMD_MODULES_ACCOUNT:
             self.add(cmd)
 
