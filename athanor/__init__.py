@@ -85,8 +85,8 @@ def _apply_settings(settings):
 
     settings.CMD_MODULES_UNLOGGEDIN = []
     settings.CMD_MODULES_SESSION = []
-    settings.CMD_MODULES_CHARACTER = []
-    settings.CMD_MODULES_ACCOUNT = ["athanor.commands.account"]
+    settings.CMD_MODULES_CHARACTER = ["athanor.commands.characters"]
+    settings.CMD_MODULES_ACCOUNT = ["athanor.commands.accounts"]
 
     settings.AUTOMAP_ENABLED = False
 
@@ -264,6 +264,16 @@ def _apply_settings(settings):
     settings.PLAYTIME_INTERVAL = 1
 
     settings.BASE_PLAYVIEW_TYPECLASS = "athanor.playviews.DefaultPlayview"
+
+    settings.PERMISSION_HIERARCHY = [
+        "Guest",  # note-only used if GUEST_ENABLED=True
+        "Player",
+        "Helper",
+        "Gamemaster",  # Added in Athanor.
+        "Builder",
+        "Admin",
+        "Developer",
+    ]
 
 
 def init(settings, plugins=None):
