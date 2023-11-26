@@ -180,36 +180,6 @@ class _AthanorCommandMixin:
         """
         self.msg("\n".join([str(o) for o in out]))
 
-    def msg(self, *args, **kwargs):
-        """
-        A shorthand for sending a message to the user.
-        """
-
-        args = list(args)
-        kwargs = dict(**kwargs)
-
-        if len(args):
-            if isinstance(args[0], (list, tuple)):
-                text, kw = args[0]
-                if hasattr(text, "__rich_console__"):
-                    kwargs["rich"] = (text, kw)
-                    args = args[1:]
-            elif hasattr(args[0], "__rich_console__"):
-                kwargs["rich"] = args[0]
-                args = args[1:]
-
-        if "text" in kwargs:
-            if isinstance(kwargs["text"], (list, tuple)):
-                text, kw = kwargs["text"]
-                if hasattr(text, "__rich_console__"):
-                    kwargs["rich"] = (text, kw)
-                    del kwargs["text"]
-            elif hasattr(kwargs["text"], "__rich_console__"):
-                kwargs["rich"] = kwargs["text"]
-                del kwargs["text"]
-
-        super().msg(*args, **kwargs)
-
     def record_idle_time(self):
         playview = None
         if self.session:

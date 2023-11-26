@@ -456,6 +456,8 @@ class AthanorBase(AthanorLowBase):
 
 
 class AthanorObject(AthanorHandler, AthanorBase):
+    lock_access_funcs = athanor.OBJECT_ACCESS_FUNCTIONS
+
     @property
     def is_player(self):
         return False
@@ -549,7 +551,7 @@ class AthanorObject(AthanorHandler, AthanorBase):
             kwargs: The outputfuncs dictionary being built up for this .msg() operation.
         """
         if text is not None:
-            if isinstance(text, (tuple, list)):
+            if isinstance(text, (tuple, list)) and len(text) == 2:
                 split_text, kw = text
                 if hasattr(split_text, "__rich_console__"):
                     kwargs["rich"] = (split_text, kw)
@@ -559,6 +561,8 @@ class AthanorObject(AthanorHandler, AthanorBase):
             elif hasattr(text, "__rich_console__"):
                 kwargs["rich"] = text
                 text = None
+            else:
+                kwargs["text"] = repr(text)
 
         if text is not None:
             if not (isinstance(text, str) or isinstance(text, tuple)):
@@ -680,3 +684,6 @@ class AthanorObject(AthanorHandler, AthanorBase):
     @lazy_property
     def sessions(self):
         return PlayviewSessionHandler(self)
+
+    def at_object_creation(self):
+        pass

@@ -26,6 +26,7 @@ OBJECT_OBJECT_DEFAULT_LOCKS = defaultdict(list)
 OBJECT_CHARACTER_DEFAULT_LOCKS = defaultdict(list)
 OBJECT_EXIT_DEFAULT_LOCKS = defaultdict(list)
 OBJECT_ROOM_DEFAULT_LOCKS = defaultdict(list)
+ACCOUNT_DEFAULT_LOCKS = defaultdict(list)
 
 HANDLERS = defaultdict(dict)
 
@@ -173,6 +174,16 @@ def _apply_settings(settings):
     settings.OBJECT_CHARACTER_DEFAULT_LOCKS = defaultdict(list)
     settings.OBJECT_EXIT_DEFAULT_LOCKS = defaultdict(list)
     settings.OBJECT_ROOM_DEFAULT_LOCKS = defaultdict(list)
+    settings.ACCOUNT_DEFAULT_LOCKS = defaultdict(list)
+
+    account_default_locks = {
+        "boot": "perm(Admin)",
+        "examine": "perm(Admin)",
+        "edit": "perm(Admin)",
+        "delete": "perm(Developer)",
+        "msg": "true()",
+        "noidletimeout": "perm(Admin)",
+    }
 
     object_default_locks = {
         "control": "perm(Developer)",
@@ -187,6 +198,7 @@ def _apply_settings(settings):
         "teleport": "true()",
         "teleport_here": "true()",
         "view": "all()",
+        "noidletimeout": "perm(Builder) or perm(noidletimeout)",
     }
 
     character_default_locks = object_default_locks.copy()
@@ -225,6 +237,7 @@ def _apply_settings(settings):
         (character_default_locks, settings.OBJECT_CHARACTER_DEFAULT_LOCKS),
         (room_default_locks, settings.OBJECT_ROOM_DEFAULT_LOCKS),
         (exit_default_locks, settings.OBJECT_EXIT_DEFAULT_LOCKS),
+        (account_default_locks, settings.ACCOUNT_DEFAULT_LOCKS),
     ]:
         for k, v in locks.items():
             target[k].append(v)
@@ -234,6 +247,7 @@ def _apply_settings(settings):
         "OBJECT_CHARACTER",
         "OBJECT_EXIT",
         "OBJECT_ROOM",
+        "ACCOUNT",
     ]
 
     # if True, characters who go offline will be stowed in Nowhere and brought back when they next login.

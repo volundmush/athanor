@@ -13,14 +13,6 @@ class AthanorCharacter(AthanorObject, DefaultCharacter):
 
     lock_default_funcs = athanor.OBJECT_CHARACTER_DEFAULT_LOCKS
     _content_types = ("character",)
-    lockstring = ""
-
-    def basetype_setup(self):
-        """
-        Avoids calling super() in order to avoid setting unnecessary locks.
-        """
-        # add the default cmdset
-        self.cmdset.add_default(settings.CMDSET_CHARACTER, persistent=True)
 
     def access_check_puppet(self, accessing_obj, **kwargs):
         """

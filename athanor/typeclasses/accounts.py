@@ -49,6 +49,7 @@ class AthanorCharactersHandler(CharactersHandler):
 
 class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
     lock_access_funcs = athanor.ACCOUNT_ACCESS_FUNCTIONS
+    lock_default_funcs = settings.ACCOUNT_DEFAULT_LOCKS
     _content_types = ("account",)
     playview_typeclass = settings.BASE_PLAYVIEW_TYPECLASS
 
@@ -507,3 +508,7 @@ class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
             )
 
         return self.ooc_appearance_template.format_map(sections)
+
+    def at_account_creation(self):
+        if not self.is_superuser:
+            self.locks.clear()
