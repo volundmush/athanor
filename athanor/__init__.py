@@ -284,6 +284,14 @@ def _apply_settings(settings):
     settings.ATHANOR_RENDERER_MODULES["ansi"].append("athanor.renderers.ansi")
     settings.INPUT_FUNC_MODULES.append("athanor.inputfuncs")
 
+    settings.PROTOCOL_RENDER_FAMILY = {
+        "telnet": "ansi",
+        "telnet/ssl": "ansi",
+        "ssh": "ansi",
+        "webclient/websocket": "ansi",
+        "webclient/ajax": "ansi",
+    }
+
 
 def init(settings, plugins=None):
     _apply_settings(settings)

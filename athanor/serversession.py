@@ -94,10 +94,11 @@ class AthanorServerSession(AthanorMessage, ServerSession):
             return self.account.options
         return self.session_options
 
-    @property
-    def render_type(self):
-        # TODO: Replace this with actual switching logic for different protocol keys...
-        return "ansi"
+    @lazy_property
+    def renderers(self):
+        return athanor.RENDERERS.get(
+            settings.PROTOCOL_RENDER_FAMILY.get(self.protocol_key, "ansi"), dict()
+        )
 
     @lazy_property
     def console(self):
@@ -162,7 +163,7 @@ class AthanorServerSession(AthanorMessage, ServerSession):
 
     def process_output_kwargs(self, **in_kwargs):
         kwargs = dict()
-        renderers = athanor.RENDERERS[self.render_type]
+        renderers = self.renderers
 
         for k, v in in_kwargs.items():
             if callable(renderer := renderers.get(k, None)):
@@ -189,8 +190,6 @@ class AthanorServerSession(AthanorMessage, ServerSession):
             kwargs["results"] = (new_bundle, kw) if kw else new_bundle
 
         kwargs = self.process_output_kwargs(**kwargs)
-
-        print(f"sending kwargs: {kwargs}")
 
         super().data_out(**kwargs)
 

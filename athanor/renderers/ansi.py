@@ -41,12 +41,13 @@ def markdown(session, data, options):
 
 def text(session, data, options):
     if options.get("type", None) == "py_output":
-        return "ansi", session.console.render_str(
+        rendered = session.console.render_str(
             data,
             markup=False,
             highlight=True,
             highlighter=ReprHighlighter(),
-        ), options
+        )
+        return "ansi", session.print(rendered), options
     return "text", data, options
 
 
