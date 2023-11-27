@@ -7,123 +7,32 @@ import evennia
 from evennia.utils.utils import lazy_property, inherits_from
 from evennia.utils.ansi import ANSIString
 from evennia.commands.default.muxcommand import MuxCommand, MuxAccountCommand
-from athanor.utils import Operation, ev_to_rich, utcnow
+from athanor.utils import OperationMixin, ev_to_rich, utcnow
 from rich.abc import RichRenderable
 from rich.table import Table
 from rich.box import ASCII2
 from rich.console import Group
 
 
-class OutputBuffer:
-    """
-    This class manages output for aggregating Rich printables (it can also accept ANSIStrings and strings
-    with Evennia's markup) and sending them to the user in a single message. It's used by the AthanorCommand
-    as a major convenience.
+class _AthanorCommandMixin(OperationMixin):
+    @property
+    def user(self):
+        return getattr(self, "account", None)
 
-    It implements a .dict attribute that can be used to pass variables to the output, which is useful for
-    OOB data and other things.
+    def at_pre_cmd(self):
+        self.record_idle_time()
 
-    As it implements __getitem__, __setitem__, and __delitem__, the Buffer itself can be
-    accessed like a dictionary for this purpose.
-    """
-
-    def __init__(self, method):
-        """
-        Method must be either an object which implements Evennia's .msg() or a reference to such a method.
-        """
-        self.method = method.msg if hasattr(method, "msg") else method
-        self.buffer = list()
-        self.dict = dict()
-
-    def append(self, obj: typing.Union[str, RichRenderable, ANSIString]):
-        """
-        Appends an object to the buffer.
-        """
-        if isinstance(obj, (str, ANSIString)):
-            self.buffer.append(ev_to_rich(obj))
-        elif hasattr(obj, "__rich_console__"):
-            self.buffer.append(obj)
-        else:
-            self.buffer.append(ev_to_rich(str(obj)))
-
-    def __getitem__(self, key):
-        return self.dict[key]
-
-    def __setitem__(self, key, value):
-        self.dict[key] = value
-
-    def __delitem__(self, key):
-        del self.dict[key]
-
-    def reset(self):
-        """
-        Reset the object and clear the buffer.
-        """
-        self.buffer.clear()
-        self.dict.clear()
-
-    def flush(self):
-        """
-        Flush the buffer and send all output to the target.
-        """
-        if not self.buffer:
-            return
-        group = Group(*self.buffer) if len(self.buffer) > 1 else self.buffer[0]
-        value = {"rich": (group, self.dict) if self.dict else group}
-        self.method(**value)
-        self.reset()
-
-
-class _AthanorCommandMixin:
-    def create_buffer(self, method=None):
-        """
-        Helpful wrapper for convenient creation of an OutputBuffer.
-        """
-        if not method:
-            method = self.msg
-        return OutputBuffer(method)
-
-    @lazy_property
-    def buffer(self):
-        """
-        A property that creates a buffer for the command to use. This is useful for aggregating output.
-        """
-        self._buffer_created = True
-        return self.create_buffer()
+    def parse(self):
+        super().parse()
+        self.status = self.st.HTTP_200_OK
+        self.results = {"success": True}
+        self.kwargs = dict()
 
     def at_post_cmd(self):
         """
         A hook that is called after the command is executed. This is used to flush the buffer.
         """
-        if getattr(self, "_buffer_created", False):
-            self.buffer.flush()
-        self.record_idle_time()
-
-    def operation(self, **kwargs) -> Operation:
-        """
-        Convenience wrapper for creating an athanor.utils.Operation object with the user
-        and character fields filled-in automatically.
-        """
-        user = None
-        character = None
-        if hasattr(self.caller, "account"):
-            user = self.caller.account
-            character = self.caller
-        elif hasattr(self.caller, "at_post_login"):
-            user = self.caller
-            character = None
-        req_kwargs = {"user": user}
-        if character:
-            req_kwargs["character"] = character
-        req_kwargs.update(kwargs)
-        return Operation(**req_kwargs)
-
-    def op_message(self, operation):
-        """
-        Convenience method for sending an Operation's message to the user, if one exists.
-        """
-        if message := operation.results.get("message", ""):
-            self.msg(message)
+        self.flush_buffers()
 
     def client_width(self):
         """

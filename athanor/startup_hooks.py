@@ -71,6 +71,13 @@ def at_server_start():
     from athanor.utils import register_access_functions, register_lock_functions
 
     try:
+        for k, v in settings.ATHANOR_RENDERER_MODULES.items():
+            for module in v:
+                athanor.RENDERERS[k].update(callables_from_module(module))
+    except Exception:
+        logger.log_trace()
+
+    try:
         register_access_functions(settings.ACCESS_FUNCTIONS_LIST)
     except Exception:
         logger.log_trace()

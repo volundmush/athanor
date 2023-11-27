@@ -9,6 +9,8 @@ import re
 from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
+from rich.abc import RichRenderable
+from rich.console import Group
 from rich.text import Text
 from rich.ansi import AnsiDecoder
 from django.conf import settings
@@ -16,6 +18,7 @@ from rest_framework import status
 from evennia import SESSION_HANDLER
 from evennia.utils.ansi import parse_ansi, ANSIString
 from evennia.utils.evtable import EvTable
+from evennia.utils.utils import logger, lazy_property
 
 
 def read_json_file(p: Path):
@@ -198,20 +201,150 @@ def online_accounts():
     return SESSION_HANDLER.all_connected_accounts()
 
 
+class OutputBuffer:
+    """
+    This class manages output for aggregating Rich printables (it can also accept ANSIStrings and strings
+    with Evennia's markup) and sending them to the user in a single message. It's used by the AthanorCommand
+    as a major convenience.
+
+    It implements a .dict attribute that can be used to pass variables to the output, which is useful for
+    OOB data and other things.
+
+    As it implements __getitem__, __setitem__, and __delitem__, the Buffer itself can be
+    accessed like a dictionary for this purpose.
+    """
+
+    def __init__(self, target, results_id):
+        """
+        Method must be either an object which implements Evennia's .msg() or a reference to such a method.
+        """
+        self.target = target
+        self.results_id = results_id
+        self.msg = target.msg
+        self.buffer = list()
+
+    def split(self, value) -> tuple[str, dict | None]:
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            return value
+        return value, dict()
+
+    def append(self, **kwargs):
+        """
+        Appends an object to the buffer.
+        """
+        out = dict()
+
+        kwargs = self.target._msg_helper_format(**kwargs)
+
+        for k, v in kwargs.items():
+            data, data_kwargs = self.split(v)
+            if callable((method := getattr(self, f"append_{k}", None))):
+                key, result = method(k, data, data_kwargs)
+                out[key] = result
+            else:
+                out[k] = (data, data_kwargs)
+
+        self.buffer.append(out)
+
+    def append_options(self, key, options, kwargs):
+        return "options", kwargs
+
+    def append_text(self, key, text, kwargs):
+        if hasattr(text, "__rich_console__"):
+            return "rich", (text, kwargs)
+        return "text", (text, kwargs)
+
+    append_rich = append_text
+
+    def reset(self):
+        """
+        Reset the object and clear the buffer.
+        """
+        self.buffer.clear()
+
+    def flush(self):
+        """
+        Flush the buffer and send all output to the target.
+        """
+        if not self.buffer:
+            return
+        self.msg(results=(self.buffer, {"results_id": self.results_id}))
+        self.reset()
+
+
 class OperationError(ValueError):
     pass
 
 
-class Operation:
+class OperationMixin:
+    ex = OperationError
+    st = status
+
+    @property
+    def actor(self):
+        return self.character or self.user or getattr(self, "session", None)
+
+    def execute(self) -> bool:
+        target = self.op_target
+        try:
+            if not self.user:
+                raise Exception("No user provided.")
+            if not (method := getattr(target, f"op_{self.operation}", None)):
+                raise Exception(f"No such operation: {self.operation}")
+            if hasattr(target, "at_pre_operation"):
+                target.at_pre_operation(self)
+            method(self)
+            self.results.update({"success": True})
+            if hasattr(target, "at_post_operation"):
+                target.at_post_operation(self)
+        except self.ex as err:
+            error = str(err)
+            self.results.update({"success": False, "error": True, "message": error})
+        except Exception as err:
+            error = f"{str(err)} (Something went very wrong. Please alert staff.)"
+            self.results.update({"success": False, "error": True, "message": error})
+            if settings.IN_GAME_ERRORS:
+                self.msg(traceback=True)
+
+        if message := self.results.get("message", None):
+            self.msg(message)
+        return self.results.get("success", False)
+
+    @lazy_property
+    def buffers(self):
+        self._buffers_created = True
+        return dict()
+
+    def get_buffer(self, obj):
+        if obj not in self.buffers:
+            self.buffers[obj] = OutputBuffer(obj, getattr(self, "results_id", None))
+        return self.buffers[obj]
+
+    def msg(self, text=None, to_obj=None, from_obj=None, session=None, **kwargs):
+        if to_obj is None:
+            to_obj = session or getattr(self, "session", None) or self.actor
+
+        if from_obj is None:
+            from_obj = to_obj
+
+        buffer = self.get_buffer(to_obj)
+        if text is not None:
+            kwargs["text"] = text
+        buffer.append(**kwargs)
+
+    def flush_buffers(self):
+        if getattr(self, "_buffers_created", False):
+            for buffer in self.buffers.values():
+                buffer.flush()
+
+
+class Operation(OperationMixin):
     """
     Class used to handle requests against Athanor API objects to reduce boilerplate.
 
     This is available in convenience wrapper form in AthanorCommand as self.operation, which
     automates filling out the user and character kwargs.
     """
-
-    ex = OperationError
-    st = status
 
     def __init__(self, target, **kwargs):
         """
@@ -220,13 +353,13 @@ class Operation:
         # The target is the object which is being operated on.
         # it must have methods that match the pattern op_<operation>, like op_create.
         # These methods must take a single argument, the operation object.
-        self.target = target
+        self.op_target = target
 
         # The user and character are the user and character who initiated the operation.
         # This will be used for permissions checks and logs.
         self.user: "DefaultAccount" = kwargs.pop("user", None)
         self.character: "DefaultCharacter" = kwargs.pop("character", None)
-
+        self.session: "DefaultSession" = kwargs.pop("session", None)
         # The operation that will be called on the target. This must be a string.
         self.operation: str = kwargs.pop("operation", None)
 
@@ -242,35 +375,14 @@ class Operation:
         self.results = dict()
 
         # Used for formatting some messages.
-        self.system_name = getattr(self.target, "system_name", "SYSTEM")
-
-        # A convenience variable of accessing (character or user), usually used for
-        # lock checks.
-        self.actor = self.character or self.user
+        self.system_name = getattr(target, "system_name", "SYSTEM")
 
         # Used as scratch space by the operation, if needed.
         self.variables = dict()
 
-    def execute(self):
-        try:
-            if not self.user:
-                raise Exception("No user provided.")
-            if not (method := getattr(self.target, f"op_{self.operation}", None)):
-                raise Exception(f"No such operation: {self.operation}")
-            if hasattr(self.target, "at_pre_operation"):
-                self.target.at_pre_operation(self)
-            method(self)
-            self.results.update({"success": True})
-            if hasattr(self.target, "at_post_operation"):
-                self.target.at_post_operation(self)
-        except self.ex as err:
-            error = str(err)
-            self.results.update({"success": False, "error": True, "message": error})
-        except Exception as err:
-            error = f"{str(err)} (Something went very wrong. Please alert staff.)"
-            self.results.update({"success": False, "error": True, "message": error})
-            if settings.IN_GAME_ERRORS:
-                self.actor.msg(traceback=True)
+    @property
+    def account(self):
+        return self.user
 
 
 def ev_to_rich(text: str):
@@ -354,11 +466,11 @@ def match_ip(address, pattern) -> bool:
 
 def ip_from_request(request, exclude=None) -> str:
     """
-    Retrieves the IP address from a Django Request, while respecting X-Forwarded-For and
+    Retrieves the IP address from a web Request, while respecting X-Forwarded-For and
     settings.UPSTREAM_IPS.
 
     Args:
-        request (django Request): The web request.
+        request (django Request or twisted.web.http.Request): The web request.
         exclude: (list, optional): A list of IP addresses to exclude from the check. If left none,
             then settings.UPSTREAM_IPS will be used.
 
@@ -367,11 +479,19 @@ def ip_from_request(request, exclude=None) -> str:
     """
     if exclude is None:
         exclude = settings.UPSTREAM_IPS
-    remote_addr = request.getClientIP()
-    addresses = list()
-    addresses.append(remote_addr)
 
-    if forwarded := request.getHeader("x-forwarded-for"):
+    if hasattr(request, "getClientIP"):
+        # It's a twisted request.
+        remote_addr = request.getClientIP()
+        forwarded = request.getHeader("x-forwarded-for")
+    else:
+        # it's a Django request.
+        remote_addr = request.META.get("REMOTE_ADDR")
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+
+    addresses = [remote_addr]
+
+    if forwarded:
         addresses.extend(x.strip() for x in forwarded.split(","))
 
     for addr in reversed(addresses):
@@ -397,3 +517,9 @@ def increment_playtime():
 
     for account, characters in accounts.items():
         account.increment_playtime(settings.PLAYTIME_INTERVAL, characters)
+
+
+def split_oob(data) -> ["any", dict]:
+    if isinstance(data, (tuple, list)) and len(data) == 2:
+        return data
+    return data, dict()

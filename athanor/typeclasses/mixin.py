@@ -9,8 +9,10 @@ from evennia.utils.ansi import strip_ansi, ANSIString
 from evennia.objects.objects import _MSG_CONTENTS_PARSER
 
 import athanor
-from athanor.utils import SafeDict, partial_match
+from athanor.utils import SafeDict, partial_match, split_oob
 from athanor.lockhandler import AthanorLockHandler
+
+_CMDHANDLER = None
 
 
 class PlayviewSessionHandler:
@@ -455,81 +457,7 @@ class AthanorBase(AthanorLowBase):
             )
 
 
-class AthanorObject(AthanorHandler, AthanorBase):
-    lock_access_funcs = athanor.OBJECT_ACCESS_FUNCTIONS
-
-    @property
-    def is_player(self):
-        return False
-
-    def msg(
-        self,
-        text=None,
-        from_obj=None,
-        session=None,
-        options=None,
-        source=None,
-        **kwargs,
-    ):
-        """
-        Emits something to a session attached to the object.
-
-        Args:
-            text (str or tuple, optional): The message to send. This
-                is treated internally like any send-command, so its
-                value can be a tuple if sending multiple arguments to
-                the `text` oob command.
-            from_obj (obj or list, optional): object that is sending. If
-                given, at_msg_send will be called. This value will be
-                passed on to the protocol. If iterable, will execute hook
-                on all entities in it.
-            session (Session or list, optional): Session or list of
-                Sessions to relay data to, if any. If set, will force send
-                to these sessions. If unset, who receives the message
-                depends on the MULTISESSION_MODE.
-            options (dict, optional): Message-specific option-value
-                pairs. These will be applied at the protocol level.
-            source (obj, optional): Source object of the message. This is the object
-                relaying text. It's likely self.id or self.puppet
-        Keyword Args:
-            any (string or tuples): All kwarg keys not listed above
-                will be treated as send-command names and their arguments
-                (which can be a string or a tuple).
-
-        Notes:
-            `at_msg_receive`and at_post_msg_receive will be called on this Object.
-            All extra kwargs will be passed on to the protocol.
-
-        """
-        kwargs["options"] = options
-        self._msg_helper_text_format(text, kwargs)
-
-        # try send hooks
-        self._msg_helper_from_obj(from_obj=from_obj, **kwargs)
-
-        if not self._msg_helper_receive(from_obj=from_obj, **kwargs):
-            return
-
-        # relay to session(s)
-        self._msg_helper_session_relay(session=session, **kwargs)
-
-        self.at_post_msg_receive(from_obj=from_obj, **kwargs)
-
-    def at_post_msg_receive(self, from_obj=None, **kwargs):
-        """
-        Overloadable hook which receives the kwargs that exist at the tail end of self.msg()'s processing.
-
-        This might be used for logging and similar purposes.
-
-        Kwargs:
-            from_obj (DefaultObject or list[DefaultObject]): The objects that sent the message.
-            **kwargs: The kwargs from the end of message, using the Evennia outputfunc format.
-        """
-        for t in self._content_types:
-            athanor.EVENTS[f"{t}_at_post_msg_receive"].send(
-                sender=self, from_obj=from_obj, **kwargs
-            )
-
+class AthanorMessage:
     def _msg_helper_session_relay(self, session=None, **kwargs):
         """
         Helper method for object.msg() to send output to sessions.
@@ -542,7 +470,7 @@ class AthanorObject(AthanorHandler, AthanorBase):
         for session in sessions:
             session.data_out(**kwargs)
 
-    def _msg_helper_text_format(self, text, kwargs: dict):
+    def _msg_helper_format(self, **kwargs):
         """
         Helper method that formats the text kwarg for sending.
 
@@ -550,46 +478,20 @@ class AthanorObject(AthanorHandler, AthanorBase):
             text (str or None): A string object or something that can be coerced into a string.
             kwargs: The outputfuncs dictionary being built up for this .msg() operation.
         """
-        if text is not None:
-            if isinstance(text, (tuple, list)) and len(text) == 2:
-                split_text, kw = text
-                if hasattr(split_text, "__rich_console__"):
-                    kwargs["rich"] = (split_text, kw)
-                    text = None
-                else:
-                    kwargs["text"] = text
-            elif hasattr(text, "__rich_console__"):
-                kwargs["rich"] = text
-                text = None
-            else:
-                kwargs["text"] = repr(text)
+        out_kwargs = dict()
 
-        if text is not None:
-            if not (isinstance(text, str) or isinstance(text, tuple)):
-                # sanitize text before sending across the wire
-                try:
-                    text = to_str(text)
-                except Exception:
-                    text = repr(text)
-            kwargs["text"] = text
+        for k, v in kwargs.items():
+            match k:
+                case "options":
+                    if v:
+                        out_kwargs[k] = v
+                case _:
+                    data, options = split_oob(v)
+                    if callable(render := getattr(data, "render", None)):
+                        data = render(self, options)
+                    out_kwargs[k] = (data, options)
 
-    def _msg_helper_from_obj(self, from_obj=None, **kwargs):
-        """
-        Helper method for .msg() that handles calling at_msg_send on the from_obj.
-
-        Kwargs:
-            text (str or None): A string object or something that can be coerced into a string.
-            from_obj (DefaultObject or list[DefaultObject]): The objects to call the hook on.
-            **kwargs: The outputfuncs being sent by this .msg() call.
-        """
-        if from_obj:
-            for obj in make_iter(from_obj):
-                try:
-                    obj.at_msg_send(
-                        text=kwargs.pop("text", None), to_obj=self, **kwargs
-                    )
-                except Exception:
-                    logger.log_trace()
+        return out_kwargs
 
     def _msg_helper_receive(self, from_obj=None, **kwargs) -> bool:
         """
@@ -612,6 +514,116 @@ class AthanorObject(AthanorHandler, AthanorBase):
         except Exception:
             logger.log_trace()
         return True
+
+    def at_msg_receive(self, text=None, from_obj=None, **kwargs):
+        return True
+
+    def at_post_msg_receive(self, from_obj=None, **kwargs):
+        """
+        Overloadable hook which receives the kwargs that exist at the tail end of self.msg()'s processing.
+
+        This might be used for logging and similar purposes.
+
+        Kwargs:
+            from_obj (DefaultObject or list[DefaultObject]): The objects that sent the message.
+            **kwargs: The kwargs from the end of message, using the Evennia outputfunc format.
+        """
+        for t in getattr(self, "_content_types", list()):
+            athanor.EVENTS[f"{t}_at_post_msg_receive"].send(
+                sender=self, from_obj=from_obj, **kwargs
+            )
+
+    def msg(
+        self,
+        text=None,
+        from_obj=None,
+        session=None,
+        options=None,
+        source=None,
+        **kwargs,
+    ):
+        if options:
+            kwargs["options"] = options
+        if text is not None:
+            kwargs["text"] = text
+        kwargs = self._msg_helper_format(**kwargs)
+        print(f"msg called on {self} with kwargs {kwargs}")
+
+        # try send hooks
+        self._msg_helper_from_obj(from_obj=from_obj, **kwargs)
+
+        if not self._msg_helper_receive(from_obj=from_obj, **kwargs):
+            return
+
+        # relay to session(s)
+        self._msg_helper_session_relay(session=session, **kwargs)
+
+        self.at_post_msg_receive(from_obj=from_obj, **kwargs)
+
+    def _msg_helper_from_obj(self, from_obj=None, **kwargs):
+        """
+        Helper method for .msg() that handles calling at_msg_send on the from_obj.
+
+        Kwargs:
+            text (str or None): A string object or something that can be coerced into a string.
+            from_obj (DefaultObject or list[DefaultObject]): The objects to call the hook on.
+            **kwargs: The outputfuncs being sent by this .msg() call.
+        """
+        if from_obj:
+            for obj in make_iter(from_obj):
+                try:
+                    obj.at_msg_send(
+                        text=kwargs.pop("text", None), to_obj=self, **kwargs
+                    )
+                except Exception:
+                    logger.log_trace()
+
+
+class AthanorObject(AthanorMessage, AthanorHandler, AthanorBase):
+    lock_access_funcs = athanor.OBJECT_ACCESS_FUNCTIONS
+
+    # Determines which order command sets begin to be assembled from.
+    # Objects are usually fourth.
+    cmd_order = 100
+    cmd_order_error = 100
+    cmd_type = "object"
+
+    def get_command_objects(self) -> dict[str, "CommandObject"]:
+        """
+        Overrideable method which returns a dictionary of all the kinds of CommandObjects
+        linked to this Object.
+        In all normal cases, that's the Object itself, and maybe an Account if the Object
+        is being puppeted.
+        The cmdhandler uses this to determine available cmdsets when executing a command.
+        Returns:
+            dict[str, CommandObject]: The CommandObjects linked to this Object.
+        """
+        out = {"object": self}
+        if self.account:
+            out["account"] = self.account
+
+        if pv := getattr(self, "puppeted_playview", getattr(self, "playview", None)):
+            out["playview"] = pv
+
+        return out
+
+    def get_cmdsets(self, caller, current, **kwargs):
+        """
+        Called by the CommandHandler to get a list of cmdsets to merge.
+
+        Args:
+            caller (obj): The object requesting the cmdsets.
+            current (cmdset): The current merged cmdset.
+            **kwargs: Arbitrary input for overloads.
+
+        Returns:
+            tuple: A tuple of (current, cmdsets), which is probably self.cmdset.current and self.cmdset.cmdset_stack
+        """
+        return self.cmdset.current, list(self.cmdset.cmdset_stack)
+
+    @property
+    def is_player(self):
+        return False
 
     def uses_screenreader(self, session=None):
         if not self.account:
@@ -687,3 +699,18 @@ class AthanorObject(AthanorHandler, AthanorBase):
 
     def at_object_creation(self):
         pass
+
+    def execute_cmd(self, raw_string, session=None, **kwargs):
+        # break circular import issues
+        global _CMDHANDLER
+        if not _CMDHANDLER:
+            from athanor.cmdhandler import cmdhandler as _CMDHANDLER
+
+        # nick replacement - we require full-word matching.
+        # do text encoding conversion
+        raw_string = self.nicks.nickreplace(
+            raw_string, categories=("inputline", "channel"), include_account=True
+        )
+        return _CMDHANDLER(
+            self, raw_string, callertype="object", session=session, **kwargs
+        )

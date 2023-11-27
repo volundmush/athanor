@@ -7,11 +7,13 @@ CMDSETS_UNLOGGEDIN_EXTRA = []
 CMDSETS_SESSION_EXTRA = []
 CMDSETS_CHARACTER_EXTRA = []
 CMDSETS_ACCOUNT_EXTRA = []
+CMDSETS_PLAYVIEW_EXTRA = []
 
 CMD_MODULES_UNLOGGEDIN = []
 CMD_MODULES_SESSION = []
 CMD_MODULES_CHARACTER = []
 CMD_MODULES_ACCOUNT = []
+CMD_MODULES_PLAYVIEW = []
 
 PLUGINS = dict()
 
@@ -29,6 +31,8 @@ OBJECT_ROOM_DEFAULT_LOCKS = defaultdict(list)
 ACCOUNT_DEFAULT_LOCKS = defaultdict(list)
 
 HANDLERS = defaultdict(dict)
+
+RENDERERS = defaultdict(dict)
 
 
 def _apply_settings(settings):
@@ -77,6 +81,7 @@ def _apply_settings(settings):
     settings.CMDSET_SESSION = "athanor.cmdsets.SessionCmdSet"
     settings.CMDSET_CHARACTER = "athanor.cmdsets.CharacterCmdSet"
     settings.CMDSET_ACCOUNT = "athanor.cmdsets.AccountCmdSet"
+    settings.CMDSET_PLAYVIEW = "athanor.cmdsets.PlayviewCmdSet"
 
     settings.CMDSETS_UNLOGGEDIN_EXTRA = []
     settings.CMDSETS_SESSION_EXTRA = []
@@ -274,6 +279,10 @@ def _apply_settings(settings):
         "Admin",
         "Developer",
     ]
+
+    settings.ATHANOR_RENDERER_MODULES = defaultdict(list)
+    settings.ATHANOR_RENDERER_MODULES["ansi"].append("athanor.renderers.ansi")
+    settings.INPUT_FUNC_MODULES.append("athanor.inputfuncs")
 
 
 def init(settings, plugins=None):

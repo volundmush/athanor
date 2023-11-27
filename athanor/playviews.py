@@ -3,6 +3,7 @@ from .managers import PlayviewManager
 
 from django.conf import settings
 from django.utils.translation import gettext as _
+from evennia.commands.cmdsethandler import CmdSetHandler
 from evennia.typeclasses.models import TypeclassBase
 from evennia.utils.utils import lazy_property, make_iter, logger, to_str
 from evennia.utils.optionhandler import OptionHandler
@@ -16,6 +17,63 @@ from athanor.utils import utcnow
 class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
     system_name = PlayviewManager.system_name
     objects = PlayviewManager()
+
+    # Determines which order command sets begin to be assembled from.
+    # Playviews are usually third.
+    cmd_order = 75
+    cmd_order_error = 75
+    cmd_type = "playview"
+
+    def __str__(self):
+        return f"{self.id} (playview)"
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}: {self.id} (playview)>"
+
+    @lazy_property
+    def cmdset(self):
+        return CmdSetHandler(self, True)
+
+    def get_command_objects(self) -> dict[str, "CommandObject"]:
+        """
+        Overrideable method which returns a dictionary of all the kinds of CommandObjects
+        linked to this ServerSession.
+        In all normal cases, that's the Session itself, and possibly an account and puppeted
+         object.
+        The cmdhandler uses this to determine available cmdsets when executing a command.
+        Returns:
+            dict[str, CommandObject]: The CommandObjects linked to this Object.
+        """
+        return {"playview": self, "account": self.account, "object": self.puppet}
+
+    def at_cmdset_get(self, **kwargs):
+        """
+        A dummy hook all objects with cmdsets need to have
+        Called just before cmdsets on this object are requested by the
+        command handler. If changes need to be done on the fly to the
+        cmdset before passing them on to the cmdhandler, this is the
+        place to do it. This is called also if the object currently
+        have no cmdsets.
+
+        Keyword Args:
+            caller (obj): The object requesting the cmdsets.
+            current (cmdset): The current merged cmdset.
+            force_init (bool): If `True`, force a re-build of the cmdset. (seems unused)
+            **kwargs: Arbitrary input for overloads.
+        """
+        pass
+
+    def get_cmdsets(self, caller, current, **kwargs):
+        """
+        Called by the CommandHandler to get a list of cmdsets to merge.
+        Args:
+            caller (obj): The object requesting the cmdsets.
+            current (cmdset): The current merged cmdset.
+            **kwargs: Arbitrary input for overloads.
+        Returns:
+            tuple: A tuple of (current, cmdsets), which is probably self.cmdset.current and self.cmdset.cmdset_stack
+        """
+        return self.cmdset.current, list(self.cmdset.cmdset_stack)
 
     def __bool__(self):
         try:
@@ -33,6 +91,9 @@ class DefaultPlayview(AthanorAccess, PlayviewDB, metaclass=TypeclassBase):
 
     def at_first_save(self):
         pass
+
+    def basetype_setup(self):
+        self.cmdset.add_default(settings.CMDSET_PLAYVIEW, persistent=True)
 
     def add_session(self, session, **kwargs):
         session.playview = self

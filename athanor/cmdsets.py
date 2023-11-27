@@ -4,8 +4,16 @@ The Athanor CmdSets are designed to load up their commands from modules specifie
 This makes managing commands much easier, as you can simply add a new module to the list and it will be loaded up.
 """
 
-from evennia import default_cmds
+from evennia import default_cmds, CmdSet
 import athanor
+
+
+class PlayviewCmdSet(CmdSet):
+    key = "PlayviewCmdset"
+
+    def at_cmdset_creation(self):
+        for cmd in athanor.CMD_MODULES_PLAYVIEW:
+            self.add(cmd)
 
 
 class CharacterCmdSet(default_cmds.CharacterCmdSet):

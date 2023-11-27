@@ -2,12 +2,11 @@ from rich.color import ColorSystem
 from django.conf import settings
 import evennia
 from evennia.server.serversession import ServerSession
-from evennia.utils.utils import lazy_property
-from rich.highlighter import ReprHighlighter
-from rich.box import ASCII2
-from rich.markdown import Markdown
-from athanor.error import AthanorTraceback
-from athanor.playviews import DefaultPlayview
+from evennia.utils.utils import lazy_property, is_iter
+from evennia.utils.optionhandler import OptionHandler
+
+import athanor
+from athanor.typeclasses.mixin import AthanorMessage
 
 _FUNCPARSER = None
 
@@ -16,15 +15,89 @@ _PlayTC = None
 _Select = None
 
 
-class AthanorServerSession(ServerSession):
+class AthanorServerSession(AthanorMessage, ServerSession):
     """
     ServerSession class which integrates the Rich Console into Evennia.
     """
+
+    # Determines which order command sets begin to be assembled from.
+    # Sessions are usually first.
+    cmd_order = 0
+    cmd_order_error = 50
+    cmd_type = "session"
 
     def __init__(self):
         super().__init__()
         self.text_callable = None
         self.playview = None
+
+    def get_command_objects(self) -> dict[str, "CommandObject"]:
+        """
+        Overrideable method which returns a dictionary of all the kinds of CommandObjects
+        linked to this ServerSession.
+        In all normal cases, that's the Session itself, and possibly an account and puppeted
+         object.
+        The cmdhandler uses this to determine available cmdsets when executing a command.
+        Returns:
+            dict[str, CommandObject]: The CommandObjects linked to this Object.
+        """
+        out = {"session": self}
+        if self.account:
+            out["account"] = self.account
+        if self.puppet:
+            out["object"] = self.puppet
+        if self.playview:
+            out["playview"] = self.playview
+        return out
+
+    def at_cmdset_get(self, **kwargs):
+        """
+        A dummy hook all objects with cmdsets need to have
+        Called just before cmdsets on this object are requested by the
+        command handler. If changes need to be done on the fly to the
+        cmdset before passing them on to the cmdhandler, this is the
+        place to do it. This is called also if the object currently
+        have no cmdsets.
+
+        Keyword Args:
+            caller (obj): The object requesting the cmdsets.
+            current (cmdset): The current merged cmdset.
+            force_init (bool): If `True`, force a re-build of the cmdset. (seems unused)
+            **kwargs: Arbitrary input for overloads.
+        """
+        pass
+
+    def get_cmdsets(self, caller, current, **kwargs):
+        """
+        Called by the CommandHandler to get a list of cmdsets to merge.
+        Args:
+            caller (obj): The object requesting the cmdsets.
+            current (cmdset): The current merged cmdset.
+            **kwargs: Arbitrary input for overloads.
+        Returns:
+            tuple: A tuple of (current, cmdsets), which is probably self.cmdset.current and self.cmdset.cmdset_stack
+        """
+        return self.cmdset.current, list(self.cmdset.cmdset_stack)
+
+    @lazy_property
+    def session_options(self):
+        return OptionHandler(
+            self,
+            options_dict=settings.OPTIONS_ACCOUNT_DEFAULT,
+            save_kwargs={"category": "option"},
+            load_kwargs={"category": "option"},
+        )
+
+    @property
+    def options(self):
+        if self.account:
+            return self.account.options
+        return self.session_options
+
+    @property
+    def render_type(self):
+        # TODO: Replace this with actual switching logic for different protocol keys...
+        return "ansi"
 
     @lazy_property
     def console(self):
@@ -82,39 +155,43 @@ class AthanorServerSession(ServerSession):
         self.console.print(*args, **new_kwargs)
         return self.console.export_text(clear=True, styles=True)
 
+    def split(self, value):
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            return value
+        return value, dict()
+
+    def process_output_kwargs(self, **in_kwargs):
+        kwargs = dict()
+        renderers = athanor.RENDERERS[self.render_type]
+
+        for k, v in in_kwargs.items():
+            if callable(renderer := renderers.get(k, None)):
+                data, options = self.split(v)
+                key, out_data, out_options = renderer(self, data, options)
+                kwargs[key] = (out_data, out_options)
+            else:
+                match k:
+                    case "options":
+                        kwargs[k] = v
+                    case _:
+                        data, options = self.split(v)
+                        kwargs[k] = (data, options)
+
+        return kwargs
+
     def data_out(self, **kwargs):
         """
         A second check to ensure that all uses of "rich" are getting processed properly.
         """
-        if "text" in kwargs:
-            t = kwargs.get("text", None)
-            if isinstance(t, (list, tuple)):
-                text, options = t
-                if options.get("type", None) == "py_output":
-                    del kwargs["text"]
-                    kwargs["rich"] = self.console.render_str(
-                        text,
-                        markup=False,
-                        highlight=True,
-                        highlighter=ReprHighlighter(),
-                    )
+        if bundle := kwargs.get("results", None):
+            bundle, kw = self.split(bundle)
+            new_bundle = [self.process_output_kwargs(**op) for op in bundle]
+            kwargs["results"] = (new_bundle, kw) if kw else new_bundle
 
-        if md := kwargs.pop("markdown", None):
-            kwargs["rich"] = Markdown(md)
+        kwargs = self.process_output_kwargs(**kwargs)
 
-        if kwargs.pop("traceback", False):
-            tb = AthanorTraceback(show_locals=True)
-            tb.box = ASCII2
-            kwargs["rich"] = tb
+        print(f"sending kwargs: {kwargs}")
 
-        if r := kwargs.get("rich", None):
-            options = None
-            if isinstance(r, (list, tuple)):
-                ri, options = r
-            else:
-                ri = r
-            printed = self.print(ri)
-            kwargs["rich"] = (printed, options) if options else printed
         super().data_out(**kwargs)
 
     def load_sync_data(self, sessdata):
@@ -167,3 +244,27 @@ class AthanorServerSession(ServerSession):
     @puppet.setter
     def puppet(self, value):
         pass
+
+    def msg(
+        self,
+        text=None,
+        from_obj=None,
+        session=None,
+        options=None,
+        source=None,
+        **kwargs,
+    ):
+        kwargs["options"] = options
+        if text is not None:
+            kwargs["text"] = text
+        kwargs = self._msg_helper_format(**kwargs)
+        kwargs.pop("session", None)
+        kwargs.pop("from_obj", None)
+        self.data_out(**kwargs)
+
+    def uses_screenreader(self, session=None):
+        if session is None:
+            session = self
+        if self.account:
+            return self.account.uses_screenreader(session=session)
+        return self.options.get("screenreader")

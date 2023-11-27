@@ -4,13 +4,26 @@ from evennia.server.portal.webclient import WebSocketClient
 from athanor.ansi import RavensGleaning
 
 
+class BundleMixin:
+    def send_results(self, *args, **kwargs):
+        """
+        A Bundle is a collection of normal send_whatevers.
+        This is normally only useful for the webclient, as telnet and SSH has no concept
+        of a singular message.
+        """
+        for data in args:
+            for k, v in data.items():
+                if callable(method := getattr(self, f"send_{k}", None)):
+                    method(v[0], **v[1])
+
+
 class PortalSessionMixin:
     def at_portal_sync(self):
         pass
 
-    def send_rich(self, *args, **kwargs):
+    def send_ansi(self, *args, **kwargs):
         """
-        Send rich data as ANSI color. args[0] should already be
+        Send raw data as ANSI color. args[0] should already be
         fully rendered.
         """
         if not args:
@@ -23,7 +36,7 @@ class PortalSessionMixin:
         self.send_text(*args, **kwargs)
 
 
-class PlainTelnet(PortalSessionMixin, TelnetProtocol):
+class PlainTelnet(BundleMixin, PortalSessionMixin, TelnetProtocol):
     pass
 
 
@@ -33,14 +46,14 @@ class SecureTelnet(PlainTelnet):
         self.protocol_key = "telnet/ssl"
 
 
-class SSHProtocol(PortalSessionMixin, SshProtocol):
+class SSHProtocol(BundleMixin, PortalSessionMixin, SshProtocol):
     pass
 
 
-class WebSocket(PortalSessionMixin, WebSocketClient):
+class WebSocket(BundleMixin, PortalSessionMixin, WebSocketClient):
     converter = RavensGleaning()
 
-    def send_rich(self, *args, **kwargs):
+    def send_ansi(self, *args, **kwargs):
         """
         Send rich data as ANSI color. args[0] should already be
         fully rendered.

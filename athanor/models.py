@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.core.validators import validate_comma_separated_integer_list
 from evennia.typeclasses.models import TypedObject
+from evennia.utils.utils import make_iter
 from .managers import PlayviewDBManager
 from .utils import utcnow
 
@@ -114,3 +115,32 @@ class PlayviewDB(TypedObject):
     )
 
     db_last_active = models.DateTimeField(null=True, blank=True, default=utcnow)
+
+    # database storage of persistant cmdsets.
+    db_cmdset_storage = models.CharField(
+        "cmdset",
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="optional python path to a cmdset class.",
+    )
+
+    # cmdset_storage property handling
+    def __cmdset_storage_get(self):
+        """getter"""
+        storage = self.db_cmdset_storage
+        return [path.strip() for path in storage.split(",")] if storage else []
+
+    def __cmdset_storage_set(self, value):
+        """setter"""
+        self.db_cmdset_storage = ",".join(str(val).strip() for val in make_iter(value))
+        self.save(update_fields=["db_cmdset_storage"])
+
+    def __cmdset_storage_del(self):
+        """deleter"""
+        self.db_cmdset_storage = None
+        self.save(update_fields=["db_cmdset_storage"])
+
+    cmdset_storage = property(
+        __cmdset_storage_get, __cmdset_storage_set, __cmdset_storage_del
+    )
