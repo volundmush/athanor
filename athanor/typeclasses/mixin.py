@@ -547,7 +547,6 @@ class AthanorMessage:
         if text is not None:
             kwargs["text"] = text
         kwargs = self._msg_helper_format(**kwargs)
-        print(f"msg called on {self} with kwargs {kwargs}")
 
         # try send hooks
         self._msg_helper_from_obj(from_obj=from_obj, **kwargs)
