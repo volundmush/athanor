@@ -113,61 +113,6 @@ Any Python modules added to this list will have their commands added to the resp
 
 NOTE: This is done via `evennia.utils.utils.callables_from_module`, which extracts all callables defined in a module (not imported) that do not begin with a _. These modules should NOT contain any other classes or functions, unless they begin with an underscore.
 
-### LOCKS
-Overall, Evennia's lock system is amazing. The concept of access_type and lockfuncs is great. However, encoding database IDs directly into strings is kind of a pain - imagine a game where characters are moved between accounts and having to constantly adjust the puppet lock, for instance? Or trying to bind an object's permissions to some kind of external access control list? How will you migrate the locks later if defaults change?
-
-Athanor provides a heavily extended and modified Lock system to attempt to answer this dilemna.
-
-The `athanor.typeclasses.mixin.AthanorAccess` typeclass mixin provides an advanced LockHandler and .access() method which provides an expanded foundation upon which a greater variety of systems can be built, with several already provided.
-
-The AthanorLockHandler provides a mechanism for allowing each typeclass to define a `dict[access_type, list]` of lockfuncs checked in list order to determine defaults. Athanor's own plugin systems use this for Zone control, if using the Zone plugins. Zone defaults are put at the front of the list for objects that belong to Zones, while the second entry is the default for that Typeclass. The first check that returns a lockdef will be be called.
-
-Additionally, if an object defines an `access_check_<access_type>` method, it will be called to determine if the lock is passed. The `AthanorCharacter` typeclass uses this for `access_check_puppet` to see if accessing_obj is the Account the character belongs to.
-
-Lastly, it's possible to define a series of access_funcs which also respond to access_type.
-
-Between all of these systems, one should only need to explicitly set an actual lock on an object if it's meant to be an exception to the norms, and defaults can be managed in settings.py for easy central management.
-
-### EVENT EMITTER
-This is honestly quite simple.
-
-```python
-from athanor import emit, register_event, unregister_event
-
-def my_event_handler(*args, **kwargs):
-    print(f"I got called! {args}")
-
-register_event("my_event", my_event_handler)
-
-emit("my_event", "boo")
-
-unregister_event("my_event", my_event_handler)
-```
-
-It's up to you how to use this. Great way to decouple code across plugins.
-
-### RICH INTEGRATION
-Each ServerSession has its own rich.console.Console instance configured to use Evennia's client width and color settings for that session.
-
-`ServerSession.data_out(**kwargs)` has been modified to respond to some very special kwargs, as follows:
-  * rich=\<renderable\> - This will render the renderable and send it to the client.
-  * markdown=\<str\> - This will render the markdown and send it to the client. Note that some markdown features are not supported; it's telnet, after all.
-  * traceback=True - This will render the traceback of the current exception and send it to the client.
-
-Only one of these kwargs should be used at a time. If more than one is used, the last one will be used.
-
-`ServerSession.data_out(**kwargs)` is eventually called by all variants of .msg() on Objects, Accounts, Sessions, and Commands, so, in a command, this could be used with `self.msg(rich=blah)`
-
-### PLAYVIEWS
-Evennia's concept of puppeting ObjectDB instances is amazingly versatile, easily one of its best features. However, I perceive several flaws.
-
-First, its ability to juggle multiple sessions-per-object struggles when confronted with the prospect of trying to 'switch control' to a different object. For instance, if you want to 'remain being character x, but you are controlling a vehicle directly', there is no straightforward way to do it - by default, you would have to shift every connected Session from x to vehicle, which would trigger Evennia to consider character x offline.
-
-Second, the process of having characters login and logout of the game world being handled on the Typeclass could lead to complicated inheritance issues when designing Character typeclasses for players vs NPCs.
-
-Third, Evennia implicitly defines a character being online or offline as whether it has sessions attached or not - there is no concept of a "linkdead" state or similar, which many games may want to have discrete control over. (IE: Should a character immediately logout if it goes linkdead, or should there be a wait period before the character is logged out?)
-
-The Playview is a new type of object which stands "between" Sessions and Objects to address these issues. It holds onto Sessions instead of the Objects, while still tricking Sessions into thinking they're directly attached to the object via .puppet. The playview can change its "current puppet" while still keeping the original character online. As it is a typeclass, it can be replaced/overloaded to dramatically alter its behavior to alter how puppeting works. Lastly, since it implements the logic for announcing players entering the game and storing characters in nullspace when they go offline, that logic has been completely removed from the Character typeclass, which should greatly simplify development of Players vs Non-Player Character logic in typeclasses for many games.
 
 ## FAQ 
   __Q:__ This is cool! How can I help?  

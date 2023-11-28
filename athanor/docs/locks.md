@@ -1,6 +1,9 @@
 # Locks
 For the following to make sense, it's recommended to study up on [Evennia's default Lock System](https://www.evennia.com/docs/latest/Components/Locks.html) before reading this.
 
+# The Problem(TM)
+Although Evennia's lock system is brilliant in a number of ways, it has some shortcomings to work through. Those being... Evennia's lock systems are stored as encoded strings on objects. The locks are used for anything and everything from who can login as a character to who can edit things. The strings, once set, are static and cannot be changed en masse; there is no mechanism with which to logically group objects together in a way to link their permissions, no way to set defaults which will take effect instantly for anything USING those defaults. Athanor does not provide the logical groupings mechanism but it does alter the lock system to be friendly to such. If you want the actual groupings mechanism too, check out athanor_zones.
+
 # AthanorAccess Mixin
 In `athanor/typeclasses/mixin.py` is the `AthanorAccess` Mixin. This is a simple Mixin that substantially enhances the functionality of Evennia's default Lock system. It does this by using an alternate LockHandler on self.locks and adding several more features, explained below.
 
