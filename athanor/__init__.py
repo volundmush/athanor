@@ -1,20 +1,24 @@
 from django.dispatch import Signal
 from collections import defaultdict
 
-CHARACTERS_ONLINE = set()
-
+# Stores references to imported CmdSets by category.
+# These are loaded during startup hooks.
 CMDSETS_UNLOGGEDIN_EXTRA = []
 CMDSETS_SESSION_EXTRA = []
 CMDSETS_CHARACTER_EXTRA = []
 CMDSETS_ACCOUNT_EXTRA = []
 CMDSETS_PLAYVIEW_EXTRA = []
 
+# Stores references to imported Commands from modules, by category.
+# These are loaded during startup hooks. The default cmdsets pull commands from
+# these lists.
 CMD_MODULES_UNLOGGEDIN = []
 CMD_MODULES_SESSION = []
 CMD_MODULES_CHARACTER = []
 CMD_MODULES_ACCOUNT = []
 CMD_MODULES_PLAYVIEW = []
 
+# Stores references to the plugin modules loaded by the init function.
 PLUGINS = dict()
 
 OBJECT_ACCESS_FUNCTIONS = defaultdict(list)
