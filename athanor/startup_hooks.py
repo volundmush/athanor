@@ -45,12 +45,6 @@ def at_server_init():
     """
     This is called first as the server is starting up, regardless of how.
     """
-    # Monkey-patch the Rich error handling into the Evennia cmdhandler.
-    from evennia.commands import cmdhandler
-    from athanor.error import _msg_err
-
-    cmdhandler._msg_err = _msg_err
-
     # Monkey-patch the Evennia admin site to allow access to all models.
     from evennia.web.utils.adminsite import EvenniaAdminSite
 

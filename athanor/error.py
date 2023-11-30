@@ -2,7 +2,6 @@
 This module implements the Rich Traceback support for Evennia Commands.
 """
 import os
-from evennia.commands.cmdhandler import logger, format_exc, _IN_GAME_ERRORS, _
 from rich.console import Console, RenderResult, ConsoleOptions, ConsoleRenderable, group
 from rich.theme import Theme
 from pygments.token import Comment, Keyword, Name, Number, Operator, String
@@ -23,9 +22,12 @@ from rich.traceback import (
     Frame,
 )
 from rich.traceback import Iterable, Columns, Syntax, Optional
+from rich.box import ASCII2
 
 
 class AthanorTraceback(Traceback):
+    box = ASCII2
+
     @group()
     def _render_stack(self, stack: Stack) -> RenderResult:
         path_highlighter = PathHighlighter()
@@ -224,29 +226,5 @@ class AthanorTraceback(Traceback):
                         "\n[i]During handling of the above exception, another exception occurred:\n",
                     )
 
-
-def _msg_err(receiver, stringtuple):
-    """
-    Helper function for returning an error to the caller.
-
-    Args:
-        receiver (Object): object to get the error message.
-        stringtuple (tuple): tuple with two strings - one for the
-            _IN_GAME_ERRORS mode (with the traceback) and one with the
-            production string (with a timestamp) to be shown to the user.
-
-    """
-    string = _("{traceback}\n{errmsg}\n(Traceback was logged {timestamp}).")
-    timestamp = logger.timeformat()
-    tracestring = format_exc()
-    logger.log_trace()
-    if _IN_GAME_ERRORS:
-        receiver.msg(traceback=True)
-    else:
-        receiver.msg(
-            string.format(
-                traceback=tracestring.splitlines()[-1],
-                errmsg=stringtuple[1].strip(),
-                timestamp=timestamp,
-            ).strip()
-        )
+    def render_ansi(self, session, kwargs):
+        return "ansi", session.print(self), kwargs

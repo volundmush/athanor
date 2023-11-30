@@ -214,47 +214,30 @@ class OutputBuffer:
     accessed like a dictionary for this purpose.
     """
 
-    def __init__(self, target, results_id):
+    def __init__(self, target, cmdid):
         """
         Method must be either an object which implements Evennia's .msg() or a reference to such a method.
         """
         self.target = target
-        self.results_id = results_id
+        self.cmdid = cmdid
         self.msg = target.msg
         self.buffer = list()
-
-    def split(self, value) -> tuple[str, dict | None]:
-        if isinstance(value, (tuple, list)) and len(value) == 2:
-            return value
-        return value, dict()
 
     def append(self, **kwargs):
         """
         Appends an object to the buffer.
         """
-        out = dict()
+        options = kwargs.pop("options", None)
 
         kwargs = self.target._msg_helper_format(**kwargs)
 
         for k, v in kwargs.items():
-            data, data_kwargs = self.split(v)
-            if callable((method := getattr(self, f"append_{k}", None))):
-                key, result = method(k, data, data_kwargs)
-                out[key] = result
-            else:
-                out[k] = (data, data_kwargs)
-
-        self.buffer.append(out)
-
-    def append_options(self, key, options, kwargs):
-        return "options", kwargs
-
-    def append_text(self, key, text, kwargs):
-        if hasattr(text, "__rich_console__"):
-            return "rich", (text, kwargs)
-        return "text", (text, kwargs)
-
-    append_rich = append_text
+            data, data_kwargs = split_oob(v)
+            if k == "text" and isinstance(data, str):
+                data = [data]
+            if options:
+                data_kwargs["options"] = options
+            self.buffer.append((k, data, data_kwargs))
 
     def reset(self):
         """
@@ -268,7 +251,11 @@ class OutputBuffer:
         """
         if not self.buffer:
             return
-        self.msg(results=(self.buffer, {"results_id": self.results_id}))
+        self.msg(
+            results=self.buffer
+            if self.cmdid is None
+            else (self.buffer, {"cmdid": self.cmdid})
+        )
         self.reset()
 
 
@@ -317,7 +304,7 @@ class OperationMixin:
 
     def get_buffer(self, obj):
         if obj not in self.buffers:
-            self.buffers[obj] = OutputBuffer(obj, getattr(self, "results_id", None))
+            self.buffers[obj] = OutputBuffer(obj, getattr(self, "cmdid", None))
         return self.buffers[obj]
 
     def msg(self, text=None, to_obj=None, from_obj=None, session=None, **kwargs):

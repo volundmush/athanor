@@ -11,10 +11,9 @@ class BundleMixin:
         This is normally only useful for the webclient, as telnet and SSH has no concept
         of a singular message.
         """
-        for data in args:
-            for k, v in data.items():
-                if callable(method := getattr(self, f"send_{k}", None)):
-                    method(v[0], **v[1])
+        for outputfunc, outargs, outkwargs in args:
+            if callable(method := getattr(self, f"send_{outputfunc}", None)):
+                method(*outargs, **outkwargs)
 
 
 class PortalSessionMixin:

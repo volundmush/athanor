@@ -7,6 +7,7 @@ from evennia.utils.optionhandler import OptionHandler
 
 import athanor
 from athanor.typeclasses.mixin import AthanorMessage
+from athanor.utils import split_oob
 
 _FUNCPARSER = None
 
@@ -96,9 +97,11 @@ class AthanorServerSession(AthanorMessage, ServerSession):
 
     @lazy_property
     def renderers(self):
-        return athanor.RENDERERS.get(
-            settings.PROTOCOL_RENDER_FAMILY.get(self.protocol_key, "ansi"), dict()
-        )
+        return athanor.RENDERERS.get(self.render_type, dict())
+
+    @lazy_property
+    def render_type(self):
+        return settings.PROTOCOL_RENDER_FAMILY.get(self.protocol_key, "ansi")
 
     @lazy_property
     def console(self):
@@ -156,26 +159,21 @@ class AthanorServerSession(AthanorMessage, ServerSession):
         self.console.print(*args, **new_kwargs)
         return self.console.export_text(clear=True, styles=True)
 
-    def split(self, value):
-        if isinstance(value, (tuple, list)) and len(value) == 2:
-            return value
-        return value, dict()
-
     def process_output_kwargs(self, **in_kwargs):
         kwargs = dict()
-        renderers = self.renderers
+        rendertype = self.render_type
 
         for k, v in in_kwargs.items():
-            if callable(renderer := renderers.get(k, None)):
-                data, options = self.split(v)
-                key, out_data, out_options = renderer(self, data, options)
+            data, options = split_oob(v)
+            if callable(method := getattr(data, f"render_{rendertype}", None)):
+                key, out_data, out_options = method(self, options)
                 kwargs[key] = (out_data, out_options)
             else:
                 match k:
                     case "options":
                         kwargs[k] = v
                     case _:
-                        data, options = self.split(v)
+                        data, options = split_oob(v)
                         kwargs[k] = (data, options)
 
         return kwargs
@@ -184,12 +182,27 @@ class AthanorServerSession(AthanorMessage, ServerSession):
         """
         A second check to ensure that all uses of "rich" are getting processed properly.
         """
-        if bundle := kwargs.get("results", None):
-            bundle, kw = self.split(bundle)
-            new_bundle = [self.process_output_kwargs(**op) for op in bundle]
-            kwargs["results"] = (new_bundle, kw) if kw else new_bundle
+        options = kwargs.pop("options", dict())
+        rendertype = self.render_type
 
-        kwargs = self.process_output_kwargs(**kwargs)
+        def process_results(op):
+            key, a, kwa = op
+            if callable(method := getattr(a, f"render_{rendertype}", None)):
+                return method(self, kwa)
+            return op
+
+        if bundle := kwargs.pop("results", None):
+            args, results_kwargs = split_oob(bundle)
+            args = [process_results(op) for op in args]
+            super().data_out(results=(args, results_kwargs) if results_kwargs else args)
+
+        for k, v in kwargs.items():
+            data, kw = split_oob(v)
+            new_key, new_data, new_kw = process_results((k, data, kw))
+            kwargs[new_key] = (new_data, new_kw) if new_kw else new_data
+
+        if options:
+            kwargs["options"] = options
 
         super().data_out(**kwargs)
 

@@ -47,6 +47,8 @@ from evennia.commands.cmdset import CmdSet
 from evennia.utils import logger, utils
 from evennia.utils.utils import string_suggestions
 
+from .error import AthanorTraceback
+
 _IN_GAME_ERRORS = settings.IN_GAME_ERRORS
 
 __all__ = ("cmdhandler", "InterruptCommand")
@@ -157,7 +159,7 @@ _GET_INPUT = None
 # helper functions
 
 
-def _msg_err(receiver, stringtuple):
+def _msg_err(receiver, stringtuple, cmdid=None):
     """
     Helper function for returning an error to the caller.
 
@@ -168,26 +170,20 @@ def _msg_err(receiver, stringtuple):
             production string (with a timestamp) to be shown to the user.
 
     """
-    string = _("{traceback}\n{errmsg}\n(Traceback was logged {timestamp}).")
-    timestamp = logger.timeformat()
-    tracestring = format_exc()
     logger.log_trace()
     if _IN_GAME_ERRORS:
-        receiver.msg(
-            string.format(
-                traceback=tracestring,
-                errmsg=stringtuple[0].strip(),
-                timestamp=timestamp,
-            ).strip()
-        )
+        tb = AthanorTraceback(show_locals=True)
+        receiver.msg(traceback=tb if cmdid is None else (tb, {"cmdid": cmdid}))
     else:
-        receiver.msg(
-            string.format(
-                traceback=tracestring.splitlines()[-1],
-                errmsg=stringtuple[1].strip(),
-                timestamp=timestamp,
-            ).strip()
-        )
+        string = _("{traceback}\n{errmsg}\n(Traceback was logged {timestamp}).")
+        timestamp = logger.timeformat()
+        tracestring = format_exc()
+        out = string.format(
+            traceback=tracestring.splitlines()[-1],
+            errmsg=stringtuple[1].strip(),
+            timestamp=timestamp,
+        ).strip()
+        receiver.msg(out if cmdid is None else (out, {"cmdid": cmdid}))
 
 
 def _process_input(caller, prompt, result, cmd, generator):
@@ -326,7 +322,7 @@ def generate_command_objects(called_by, session=None):
 
 @inlineCallbacks
 def get_and_merge_cmdsets(
-    caller, command_objects, callertype, raw_string, report_to=None
+    caller, command_objects, callertype, raw_string, report_to=None, **kwargs
 ):
     """
     Gather all relevant cmdsets and merge them.
@@ -409,7 +405,7 @@ def get_and_merge_cmdsets(
                         )
                 returnValue(local_obj_cmdsets)
             except Exception:
-                _msg_err(caller, _ERROR_CMDSETS)
+                _msg_err(caller, _ERROR_CMDSETS, cmdid=kwargs.get("cmdid", None))
                 raise ErrorReported(raw_string)
 
         @inlineCallbacks
@@ -422,7 +418,7 @@ def get_and_merge_cmdsets(
             try:
                 yield obj.at_cmdset_get(caller=caller, current=current)
             except Exception:
-                _msg_err(caller, _ERROR_CMDSETS)
+                _msg_err(caller, _ERROR_CMDSETS, cmdid=kwargs.get("cmdid", None))
                 raise ErrorReported(raw_string)
             try:
                 returnValue(obj.get_cmdsets(caller=caller, current=current))
@@ -513,7 +509,7 @@ def get_and_merge_cmdsets(
     except ErrorReported:
         raise
     except Exception:
-        _msg_err(caller, _ERROR_CMDSETS)
+        _msg_err(caller, _ERROR_CMDSETS, cmdid=kwargs.get("cmdid", None))
         raise
         # raise ErrorReported
 
@@ -681,7 +677,7 @@ def cmdhandler(
             # Do nothing, clean exit
             pass
         except Exception:
-            _msg_err(caller, _ERROR_UNTRAPPED)
+            _msg_err(caller, _ERROR_UNTRAPPED, cmdid=kwargs.get("cmdid", None))
             raise ErrorReported(raw_string)
         finally:
             _COMMAND_NESTING[called_by] -= 1
@@ -828,17 +824,25 @@ def cmdhandler(
                 returnValue(ret)
             elif sysarg:
                 # return system arg
-                error_to.msg(exc.sysarg)
+                cmdid = kwargs.get("cmdid", None)
+                error_to.msg(
+                    exc.sysarg if cmdid is None else (exc.sysarg, {"cmdid": cmdid})
+                )
 
         except NoCmdSets:
             # Critical error.
             logger.log_err("No cmdsets found: %s" % caller)
-            error_to.msg(_ERROR_NOCMDSETS)
+            cmdid = kwargs.get("cmdid", None)
+            error_to.msg(
+                _ERROR_NOCMDSETS
+                if cmdid is None
+                else (_ERROR_NOCMDSETS, {"cmdid": cmdid})
+            )
 
         except Exception:
             # We should not end up here. If we do, it's a programming bug.
-            _msg_err(error_to, _ERROR_UNTRAPPED)
+            _msg_err(error_to, _ERROR_UNTRAPPED, cmdid=kwargs.get("cmdid", None))
 
     except Exception:
         # This catches exceptions in cmdhandler exceptions themselves
-        _msg_err(error_to, _ERROR_CMDHANDLER)
+        _msg_err(error_to, _ERROR_CMDHANDLER, cmdid=kwargs.get("cmdid", None))
