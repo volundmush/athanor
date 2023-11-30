@@ -11,7 +11,9 @@ class BundleMixin:
         This is normally only useful for the webclient, as telnet and SSH has no concept
         of a singular message.
         """
-        for outputfunc, outargs, outkwargs in args:
+        for arg in args:
+            outputfunc = arg[0], outargs = arg[1]
+            outkwargs = arg[2] if len(arg) > 2 else dict()
             if callable(method := getattr(self, f"send_{outputfunc}", None)):
                 method(*outargs, **outkwargs)
 
