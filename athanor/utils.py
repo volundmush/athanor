@@ -19,6 +19,7 @@ from evennia import SESSION_HANDLER
 from evennia.utils.ansi import parse_ansi, ANSIString
 from evennia.utils.evtable import EvTable
 from evennia.utils.utils import logger, lazy_property
+import athanor
 
 
 def read_json_file(p: Path):
@@ -220,24 +221,14 @@ class OutputBuffer:
         """
         self.target = target
         self.cmdid = cmdid
-        self.msg = target.msg
+        self.send = target.send
         self.buffer = list()
 
     def append(self, **kwargs):
         """
         Appends an object to the buffer.
         """
-        options = kwargs.pop("options", None)
-
-        kwargs = self.target._msg_helper_format(**kwargs)
-
-        for k, v in kwargs.items():
-            data, data_kwargs = split_oob(v)
-            if k == "text" and isinstance(data, str):
-                data = [data]
-            if options:
-                data_kwargs["options"] = options
-            self.buffer.append((k, data, data_kwargs))
+        pass
 
     def reset(self):
         """
@@ -251,11 +242,10 @@ class OutputBuffer:
         """
         if not self.buffer:
             return
-        self.msg(
-            results=self.buffer
-            if self.cmdid is None
-            else (self.buffer, {"cmdid": self.cmdid})
-        )
+        kwargs = dict()
+        if self.cmdid:
+            kwargs["cmdid"] = self.cmdid
+        self.send(self.buffer.copy(), **kwargs)
         self.reset()
 
 
@@ -307,7 +297,7 @@ class OperationMixin:
             self.buffers[obj] = OutputBuffer(obj, getattr(self, "cmdid", None))
         return self.buffers[obj]
 
-    def msg(self, text=None, to_obj=None, from_obj=None, session=None, **kwargs):
+    def old_msg(self, text=None, to_obj=None, from_obj=None, session=None, **kwargs):
         if to_obj is None:
             to_obj = session or getattr(self, "session", None) or self.actor
 

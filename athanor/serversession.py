@@ -6,8 +6,7 @@ from evennia.utils.utils import lazy_property, is_iter
 from evennia.utils.optionhandler import OptionHandler
 
 import athanor
-from athanor.typeclasses.mixin import AthanorMessage
-from athanor.utils import split_oob
+
 
 _FUNCPARSER = None
 
@@ -16,7 +15,7 @@ _PlayTC = None
 _Select = None
 
 
-class AthanorServerSession(AthanorMessage, ServerSession):
+class AthanorServerSession(ServerSession):
     """
     ServerSession class which integrates the Rich Console into Evennia.
     """
@@ -96,10 +95,6 @@ class AthanorServerSession(AthanorMessage, ServerSession):
         return self.session_options
 
     @lazy_property
-    def renderers(self):
-        return athanor.RENDERERS.get(self.render_type, dict())
-
-    @lazy_property
     def render_type(self):
         return settings.PROTOCOL_RENDER_FAMILY.get(self.protocol_key, "ansi")
 
@@ -115,100 +110,6 @@ class AthanorServerSession(AthanorMessage, ServerSession):
         return MudConsole(
             color_system=self.rich_color_system(), width=width, file=self, record=True
         )
-
-    def rich_color_system(self):
-        if self.protocol_flags.get("NOCOLOR", False):
-            return None
-        if self.protocol_flags.get("XTERM256", False):
-            return "256"
-        if self.protocol_flags.get("ANSI", False):
-            return "standard"
-        return None
-
-    def update_rich(self):
-        check = self.console
-        if "SCREENWIDTH" in self.protocol_flags:
-            check._width = self.protocol_flags["SCREENWIDTH"][0]
-        else:
-            check._width = settings.CLIENT_DEFAULT_WIDTH
-        if self.protocol_flags.get("NOCOLOR", False):
-            check._color_system = None
-        elif self.protocol_flags.get("XTERM256", False):
-            check._color_system = ColorSystem.EIGHT_BIT
-        elif self.protocol_flags.get("ANSI", False):
-            check._color_system = ColorSystem.STANDARD
-
-    def write(self, b: str):
-        """
-        When self.console.print() is called, it writes output to here.
-        Not necessarily useful, but it ensures console print doesn't end up sent out stdout or etc.
-        """
-
-    def flush(self):
-        """
-        Do not remove this method. It's needed to trick Console into treating this object
-        as a file.
-        """
-
-    def print(self, *args, **kwargs) -> str:
-        """
-        A thin wrapper around Rich.Console's print. Returns the exported data.
-        """
-        new_kwargs = {"highlight": False}
-        new_kwargs.update(kwargs)
-        self.console.print(*args, **new_kwargs)
-        return self.console.export_text(clear=True, styles=True)
-
-    def process_output_kwargs(self, **in_kwargs):
-        kwargs = dict()
-        rendertype = self.render_type
-
-        for k, v in in_kwargs.items():
-            data, options = split_oob(v)
-            if callable(method := getattr(data, f"render_{rendertype}", None)):
-                key, out_data, out_options = method(self, options)
-                kwargs[key] = (out_data, out_options)
-            else:
-                match k:
-                    case "options":
-                        kwargs[k] = v
-                    case _:
-                        data, options = split_oob(v)
-                        kwargs[k] = (data, options)
-
-        return kwargs
-
-    def data_out(self, **kwargs):
-        """
-        A second check to ensure that all uses of "rich" are getting processed properly.
-        """
-        options = kwargs.pop("options", dict())
-        rendertype = self.render_type
-
-        def process_results(op):
-            key, a, kwa = op
-            if callable(method := getattr(a, f"render_{rendertype}", None)):
-                return method(self, kwa)
-            return op
-
-        if bundle := kwargs.pop("results", None):
-            args, results_kwargs = split_oob(bundle)
-            args = [process_results(op) for op in args]
-            super().data_out(results=(args, results_kwargs) if results_kwargs else args)
-
-        for k, v in kwargs.items():
-            data, kw = split_oob(v)
-            new_key, new_data, new_kw = process_results((k, data, kw))
-            kwargs[new_key] = (new_data, new_kw) if new_kw else new_data
-
-        if options:
-            kwargs["options"] = options
-
-        super().data_out(**kwargs)
-
-    def load_sync_data(self, sessdata):
-        super().load_sync_data(sessdata)
-        self.update_rich()
 
     def at_sync(self):
         """
@@ -256,23 +157,6 @@ class AthanorServerSession(AthanorMessage, ServerSession):
     @puppet.setter
     def puppet(self, value):
         pass
-
-    def msg(
-        self,
-        text=None,
-        from_obj=None,
-        session=None,
-        options=None,
-        source=None,
-        **kwargs,
-    ):
-        kwargs["options"] = options
-        if text is not None:
-            kwargs["text"] = text
-        kwargs = self._msg_helper_format(**kwargs)
-        kwargs.pop("session", None)
-        kwargs.pop("from_obj", None)
-        self.data_out(**kwargs)
 
     def uses_screenreader(self, session=None):
         if session is None:

@@ -36,7 +36,7 @@ ACCOUNT_DEFAULT_LOCKS = defaultdict(list)
 
 HANDLERS = defaultdict(dict)
 
-RENDERERS = defaultdict(dict)
+SENDABLES = dict()
 
 
 def _apply_settings(settings):
@@ -283,9 +283,6 @@ def _apply_settings(settings):
         "Admin",
         "Developer",
     ]
-
-    settings.ATHANOR_RENDERER_MODULES = defaultdict(list)
-    settings.ATHANOR_RENDERER_MODULES["ansi"].append("athanor.renderers.ansi")
     settings.INPUT_FUNC_MODULES.append("athanor.inputfuncs")
 
     settings.PROTOCOL_RENDER_FAMILY = {

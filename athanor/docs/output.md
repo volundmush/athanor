@@ -12,16 +12,18 @@ To create complex data structures such as tables, athanor has default Formatter 
 Formatters may be used in place of string data or other values when using `.msg()` kwargs. for instance...
 
 ```python
-from athanor.formatters import Table
+from athanor.sendables import Table
 
 t = Table(title="Example")
 character.msg(table=t)
 ```
 
-The new .msg() method will detect formatters and render them before moving on to further steps like logging or relaying to sessions. So, Formatters are meant to be used as a CONVENIENCE in place of defining the complex JSON directly.
+## Rendering Output
+When outgoing data reaches `ServerSession.data_out(**kwargs)`, the ServerSession will use its `render_type` to attempt to render a Formatter. The `render_type` is determined by the `protocol_key` and a dictionary in `settings.py` called `PROTOCOL_RENDER_FAMILY`.
 
-## Renderers
-When outgoing data reaches `ServerSession.data_out(**kwargs)`, the ServerSession will retrieve its dictionary of RENDERERS from `athanor.RENDERERS[<family>]`. If a renderer exists for a key (like "table", or "markdown", or "text"), then it will be called. The results may alter the given options, the outputfunc type (like turning "table" into "ansi" over telnet).
+This determines whether `render_ansi`, `render_html`, or `render_json` is called, or potentially others added by developers.
+
+These methods always take the session and the kwargs data, and will output a tuple of (str, args, kwargs) as the new outputfunc - the name of the outputfunc may even change.
 
 Since multiple kinds of messages might be rendered into the same kind of outputfunc, it is recommended to not call .msg() with multiple kwargs. Instead, call it once per message.
 
@@ -31,21 +33,17 @@ character.msg(table=table)
 character.msg(markdown=markdown)
 ```
 
-Athanor determines which "family" of renderers to use based on the protocol_key of the Session (IE: telnet, telnet/tls, webclient/websocket, webclient/ajax, ssh, etc). The mapping is maintained in settings as the `PROTOCOL_RENDER_FAMILY` dictionary, which is loaded up with renderer funcs defined in `ATHANOR_RENDERER_MODULES` (a defaultdict(list)). This allows Renderers to be replaced by identical-named ones from later-listed modules.
-
-Renderers DO NOT need to export just ansi colored text. They can export anything which can be sent out via Evennia's outputfunc path. This includes JSON, HTML, random binary encoded as base64, whatever.
-
 ## PortalSession send_* funcs
-Each PortalSession can respond to outputfuncs by checking for a matching send_* method on that Protocol as data is being sent to the client. `protocol.send_text()` is used for standard Evennia text output. Athanor provides a method for 'ansi' which is largely a wrapper for sending raw colored text over telnet, or calling an ansi2html converter for the webclient. It's easy to add new send_* functions though and subclass protocol classes by altering settings.py.
+Each PortalSession can respond to outputfuncs by checking for a matching send_* method on that Protocol as data is being sent to the client. `protocol.send_text()` is used for standard Evennia text output. Athanor provides a method for `send_ansi()` which is largely a wrapper for sending raw colored text over telnet, or calling an ansi2html converter for the webclient. It's easy to add new send_* functions though and subclass protocol classes by altering settings.py.
 
 ## Output buffering and Results outputs.
-Athanor has an `OutputBuffer` class in `athanor/utils.py` which captures .msg() calls meant to be sent to an object, account, or session, and can then unleash them all at once by flushing the buffer. This 'bundles' the messages into a single outgoing message. The bundle may have an attached "results_id" that will appear in its formatted kwargs.
+Athanor has an `OutputBuffer` class in `athanor/utils.py` which captures `.msg(**kwargs)` calls meant to be sent to an object, account, or session, and can then unleash them all at once by flushing the buffer. This 'bundles' the messages into a single outgoing message of the `results` output type. This message may have an attached "cmdid" that will appear in its formatted kwargs. its args is a list of outputfunc tuples in order that the kwargs were sent to `.msg()`.
 
 ## Matching input and Output
 All AthanorCommands buffer their output by default. The buffer is flushed by the `at_post_cmd()` hook. The flush will, by default, use the results_id set on the command instance. This attribute can be set using the inputfunc's kwargs, a feat only accessible to the webclient and similar protocols. (telnet cannot do this unfortunately....)
 
 For example,
-`["text", ["look"], {"results_id": 5}]`
-If the webclient sends this, it will get back a 'bundle' containing the response sent to cmd.msg() as the command runs, which is identified by results_id: 5. This allows the webclient to match up the output with the input.
+`["text", ["look"], {"cmdid": 5}]`
+If the webclient sends this, it will get back a 'bundle' containing the response sent to `cmd.msg()` as the command runs, which is identified by cmdid: 5. This allows the webclient to match up the output with the input.
 
 This unfortunately cannot capture ALL possible outputs triggered by a command, such as alerts sent to other characters, alerts triggered by other components of Evennia, and error messages, nor is it guaranteed that a result WILL be sent.

@@ -13,7 +13,7 @@ from rich.box import ASCII2
 
 import athanor
 from athanor.utils import utcnow
-from .mixin import AthanorLowBase, AthanorHandler, AthanorMessage
+from .mixin import AthanorLowBase, AthanorHandler
 
 _CMDHANDLER = None
 
@@ -49,7 +49,7 @@ class AthanorCharactersHandler(CharactersHandler):
         return self.owner.owned_characters.count()
 
 
-class AthanorAccount(AthanorMessage, AthanorHandler, AthanorLowBase, DefaultAccount):
+class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
     lock_access_funcs = athanor.ACCOUNT_ACCESS_FUNCTIONS
     lock_default_funcs = settings.ACCOUNT_DEFAULT_LOCKS
     _content_types = ("account",)

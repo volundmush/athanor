@@ -1,36 +1,19 @@
 from rich.table import Table as RichTable
 from rich.box import ASCII2
-from rich.markdown import Markdown
+from rich.markdown import Markdown as RichMarkdown
 from rich.highlighter import ReprHighlighter
+
+from evennia.server.sendables import Sendable
+
+import athanor
 from athanor.error import AthanorTraceback
 from athanor.ansi import RavensGleaning
 from bs4 import BeautifulSoup
 
-RAVEN = RavensGleaning()
 
+class Table(Sendable):
+    render_types = ("ansi", "html", "json")
 
-class Formatter:
-    def __str__(self):
-        return self.__class__.__name__.lower()
-
-    def serialize(self) -> dict | list | str:
-        pass
-
-    @classmethod
-    def deserialize(cls, data: dict | list | str):
-        pass
-
-    def render_html(self, session, kwargs) -> (str, list, dict):
-        pass
-
-    def render_ansi(self, session, kwargs) -> (str, list, dict):
-        pass
-
-    def render_json(self, session, kwargs) -> (str, list, dict):
-        pass
-
-
-class Table(Formatter):
     class Column:
         def __init__(self, table, header=None, col_type="str", **kwargs):
             self.table = table
@@ -135,15 +118,15 @@ class Table(Formatter):
             out.add_row(*row)
         return out
 
-    def render_html(self, session, kwargs) -> (str, list, dict):
+    def render_html(self, session, kwargs) -> str:
         soup = BeautifulSoup("", "html.parser")
         table = soup.new_tag("table")
         # still working on this obviously...
 
     def render_json(self, session, kwargs) -> (str, list, dict):
-        return str(self), self.serialize(), kwargs
+        return self.serialize()
 
-    def render_ansi(self, session, kwargs) -> (str, list, dict):
+    def render_ansi(self, session, kwargs) -> str:
         table_kwargs = {
             "box": ASCII2,
             "border_style": session.options.get("rich_border_style"),
@@ -166,4 +149,86 @@ class Table(Formatter):
         for row in self.rows:
             t.add_row(*row.render_ansi(session, kwargs))
 
-        return "ansi", session.print(t), kwargs
+        return session.print(t)
+
+
+class Representation(Sendable):
+    def __init__(self, text, **kwargs):
+        self.text = text
+
+    def serialize(self):
+        return self.text
+
+    @classmethod
+    def deserialize(cls, data):
+        return cls(data)
+
+    def render_html(self, session, kwargs) -> str:
+        pass
+
+    def render_json(self, session, kwargs) -> (str, list, dict):
+        return ("representation", self.text)
+
+    def render_ansi(self, session, kwargs) -> str:
+        rendered = session.console.render_str(
+            self.text, markup=False, highlight=True, highlighter=ReprHighlighter()
+        )
+        return session.print(rendered)
+
+
+class Text(Sendable):
+    render_types = ("ansi", "html", "json")
+
+    @classmethod
+    def from_msg(cls, data, **kwargs):
+        if kwargs.get("type", None) == "py_output":
+            r = athanor.SENDABLES.get("representation")
+            return r(data, **kwargs)
+        return cls(data, **kwargs)
+
+    def __init__(self, text: str | ANSIString, **kwargs):
+        self.text = text if isinstance(text, ANSIString) else ANSIString(text)
+
+    def serialize(self):
+        return str(self.text)
+
+    @classmethod
+    def deserialize(cls, data):
+        return cls(data)
+
+    def render_html(self, session, kwargs) -> str:
+        return RAVEN.convert(str(self.text))
+
+    def render_json(self, session, kwargs) -> str:
+        return str(self.text)
+
+    def render_ansi(self, session, kwargs) -> str:
+        return str(self.text)
+
+
+class Markdown(Sendable):
+    render_types = ("ansi", "html", "json")
+
+    @classmethod
+    def from_msg(cls, data, **kwargs):
+        return cls(data, **kwargs)
+
+    def __init__(self, text: str, **kwargs):
+        self.text = text
+
+    def serialize(self):
+        return self.text
+
+    @classmethod
+    def deserialize(cls, data):
+        return cls(data)
+
+    def render_html(self, session, kwargs) -> str:
+        pass
+
+    def render_json(self, session, kwargs) -> str:
+        return ("markdown", str(self.text))
+
+    def render_ansi(self, session, kwargs) -> str:
+        md = RichMarkdown(self.text)
+        return session.print(md)

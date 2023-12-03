@@ -3,10 +3,12 @@ Implements Athanor-specific command infrastructure and helper utilities to make 
 commands a much easier and more streamlined task.
 """
 import typing
+from django.conf import settings
 import evennia
 from evennia.utils.utils import lazy_property, inherits_from
 from evennia.utils.ansi import ANSIString
 from evennia.commands.default.muxcommand import MuxCommand, MuxAccountCommand
+from evennia.utils.optionhandler import OptionHandler
 from athanor.utils import OperationMixin, ev_to_rich, utcnow
 from rich.abc import RichRenderable
 from rich.table import Table
@@ -15,6 +17,23 @@ from rich.console import Group
 
 
 class _AthanorCommandMixin(OperationMixin):
+    @lazy_property
+    def command_options(self):
+        return OptionHandler(
+            self,
+            options_dict=settings.OPTIONS_ACCOUNT_DEFAULT,
+            save_kwargs={"category": "option"},
+            load_kwargs={"category": "option"},
+        )
+
+    @property
+    def options(self):
+        if hasattr(self, "session") and self.session:
+            return self.session.options
+        if hasattr(self, "account") and self.account:
+            return self.account.options
+        return self.command_options
+
     @property
     def user(self):
         return getattr(self, "account", None)
