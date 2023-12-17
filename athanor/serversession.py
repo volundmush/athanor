@@ -94,23 +94,6 @@ class AthanorServerSession(ServerSession):
             return self.account.options
         return self.session_options
 
-    @lazy_property
-    def render_type(self):
-        return settings.PROTOCOL_RENDER_FAMILY.get(self.protocol_key, "ansi")
-
-    @lazy_property
-    def console(self):
-        # from athanor.mudrich import MudConsole
-        from rich.console import Console as MudConsole
-
-        if "SCREENWIDTH" in self.protocol_flags:
-            width = self.protocol_flags["SCREENWIDTH"][0]
-        else:
-            width = settings.CLIENT_DEFAULT_WIDTH
-        return MudConsole(
-            color_system=self.rich_color_system(), width=width, file=self, record=True
-        )
-
     def at_sync(self):
         """
         This is called whenever a session has been resynced with the

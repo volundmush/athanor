@@ -36,8 +36,6 @@ ACCOUNT_DEFAULT_LOCKS = defaultdict(list)
 
 HANDLERS = defaultdict(dict)
 
-SENDABLES = dict()
-
 
 def _apply_settings(settings):
     settings.INSTALLED_APPS.append("athanor")

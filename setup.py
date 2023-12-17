@@ -2,6 +2,7 @@ import os
 import sys
 from setuptools import setup, find_packages
 
+
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 
 OS_WINDOWS = os.name == "nt"

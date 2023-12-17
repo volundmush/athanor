@@ -102,22 +102,7 @@ class AthanorPortalSession:
 
 
 class PlainTelnet(AthanorPortalSession, TelnetProtocol):
-    render_types = ("ansi", "oob")
-
-    def handle_sendables_ansi(self, sendables, metadata):
-        print(f"{self} got ANSI sendables: {sendables} with metadata: {metadata}")
-        print(f"{self} protocol_flags are: {self.protocol_flags}")
-        print(f"{self} console MXP: {self.console._mxp}")
-        for sendable in sendables:
-            if callable(method := getattr(sendable, "render_as_ansi", None)):
-                try:
-                    output = method(self, metadata)
-                    print(f"{self} got ANSI output from {sendable}: {output}")
-                    self.send_ansi(*[output], **metadata)
-                except Exception:
-                    log_trace()
-            else:
-                print(f"{self} got ANSI sendable with no render_as_ansi: {sendable}")
+    pass
 
 
 class SecureTelnet(PlainTelnet):
