@@ -1,5 +1,2 @@
 evennia
 orjson
-beautifulsoup4
-rich
-ansi2html

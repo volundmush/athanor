@@ -8,8 +8,6 @@ from evennia.utils import lazy_property, class_from_module, make_iter, dedent
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
 from evennia.server import signals
-from rich.table import Table
-from rich.box import ASCII2
 
 import athanor
 from athanor.utils import utcnow
@@ -126,19 +124,6 @@ class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
             **kwargs,
         )
         return table
-
-    def rich_table(self, *args, **kwargs) -> Table:
-        real_kwargs = {
-            "box": ASCII2,
-            "border_style": self.options.get("rich_border_style"),
-            "header_style": self.options.get("rich_header_style"),
-            "title_style": self.options.get("rich_header_style"),
-            "expand": True,
-        }
-        real_kwargs.update(kwargs)
-        if self.uses_screenreader():
-            real_kwargs["box"] = None
-        return Table(*args, **real_kwargs)
 
     def _render_decoration(
         self,

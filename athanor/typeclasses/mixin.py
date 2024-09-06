@@ -128,6 +128,7 @@ class Handlers:
 
 
 class AthanorHandler:
+
     @lazy_property
     def handlers(self):
         return Handlers(self)
@@ -272,7 +273,7 @@ class AthanorBase(AthanorLowBase):
     def return_appearance(self, looker, **kwargs):
         if not looker:
             return ""
-        kwargs["contents_map"] = self.get_visible_contents(looker, **kwargs)
+        kwargs["contents_map"] = self.filter_visible(looker, **kwargs)
         out_dict = SafeDict()
         for k in self.format_kwargs:
             if f_func := getattr(self, f"get_display_{k}", None):
