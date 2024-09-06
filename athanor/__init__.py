@@ -32,31 +32,6 @@ HANDLERS = defaultdict(dict)
 
 
 def _apply_settings(settings):
-    settings.INSTALLED_APPS.append("athanor")
-    settings.MULTISESSION_MODE = 3
-    settings.AUTO_CREATE_CHARACTER_WITH_ACCOUNT = False
-    settings.AUTO_PUPPET_ON_LOGIN = False
-    settings.MAX_NR_SIMULTANEOUS_PUPPETS = 10
-    settings.MAX_NR_CHARACTERS = 10
-
-    settings.AT_SERVER_STARTSTOP_MODULE = (
-        [settings.AT_SERVER_STARTSTOP_MODULE]
-        if isinstance(settings.AT_SERVER_STARTSTOP_MODULE, str)
-        else settings.AT_SERVER_STARTSTOP_MODULE
-    )
-    settings.AT_SERVER_STARTSTOP_MODULE.append("athanor.startup_hooks")
-
-    settings.ACTION_TEMPLATES = {
-        "say": '$You() $conj(say), "{text}"',
-        "whisper": '$You() $conj(whisper) to $you(target), "{text}"',
-        "pose": "$You() {text}",
-        "emit": "{text}",
-        "semipose": "$You(){text}",
-        "login": "$You() $conj(have) entered the game.",
-        "logout": "$You() $conj(have) left the game.",
-        "linkdead": "$You() $conj(have) gone linkdead.",
-        "linklost": "$You() $conj(have) lost a connection unexpectedly.",
-    }
 
     settings.BASE_CHARACTER_TYPECLASS = (
         "athanor.typeclasses.characters.AthanorCharacter"
@@ -90,33 +65,6 @@ def _apply_settings(settings):
 
     settings.AUTOMAP_ENABLED = False
 
-    if isinstance(settings.LOCK_FUNC_MODULES, tuple):
-        settings.LOCK_FUNC_MODULES = list(settings.LOCK_FUNC_MODULES)
-
-    settings.OPTIONS_ACCOUNT_DEFAULT["screenreader"] = (
-        "Minimize fancy formatting.",
-        "Boolean",
-        False,
-    )
-
-    settings.OPTIONS_ACCOUNT_DEFAULT["border_color"] = (
-        "Headers, footers, table borders, etc.",
-        "Color",
-        "M",
-    )
-
-    settings.OPTIONS_ACCOUNT_DEFAULT["header_text_color"] = (
-        "Text inside Header lines.",
-        "Color",
-        "w",
-    )
-
-    settings.OPTIONS_ACCOUNT_DEFAULT["client_width"] = (
-        "Preferred client width.",
-        "PositiveInteger",
-        settings.CLIENT_DEFAULT_WIDTH,
-    )
-
     settings.ALERTS_CHANNEL = "MudInfo"
     settings.ROOT_URLCONF = "athanor.urls"
 
@@ -126,8 +74,6 @@ def _apply_settings(settings):
         ("admin/", "web.admin.urls"),
         ("athanor/", "athanor.website.urls"),
     ]
-
-    settings.SERVER_SESSION_CLASS = "athanor.serversession.AthanorServerSession"
 
     settings.DJANGO_ADMIN_APP_ORDER = [
         "accounts",
@@ -246,7 +192,7 @@ def _apply_settings(settings):
     # This is also how many seconds will be added to playtime.
     settings.PLAYTIME_INTERVAL = 1
 
-    settings.BASE_PLAYVIEW_TYPECLASS = "athanor.playviews.DefaultPlayview"
+
 
     settings.PERMISSION_HIERARCHY = [
         "Guest",  # note-only used if GUEST_ENABLED=True

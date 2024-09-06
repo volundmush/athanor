@@ -1,5 +1,4 @@
 import typing
-from typing import Optional, List
 from collections import defaultdict
 
 from django.conf import settings
@@ -9,7 +8,7 @@ from evennia.utils.ansi import strip_ansi, ANSIString
 from evennia.objects.objects import _MSG_CONTENTS_PARSER
 
 import athanor
-from athanor.utils import SafeDict, partial_match
+from athanor.utils import SafeDict
 from athanor.lockhandler import AthanorLockHandler
 
 
@@ -644,7 +643,7 @@ class AthanorObject(AthanorHandler, AthanorBase):
 
     @property
     def playtime(self):
-        from athanor.models import CharacterPlaytime
+        from athanor.playviews.models import CharacterPlaytime
 
         return CharacterPlaytime.objects.get_or_create(id=self)[0]
 

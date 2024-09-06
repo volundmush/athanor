@@ -2,12 +2,10 @@ import math
 import datetime
 
 from django.conf import settings
-from django.utils.translation import gettext as _
 from evennia.accounts.accounts import DefaultAccount, CharactersHandler
 from evennia.utils import lazy_property, class_from_module, make_iter, dedent
 from evennia.utils.ansi import ANSIString
 from evennia.utils.evtable import EvTable
-from evennia.server import signals
 
 import athanor
 from athanor.utils import utcnow
@@ -25,7 +23,7 @@ class AthanorCharactersHandler(CharactersHandler):
 
     def add(self, character):
         if not (owner := getattr(character, "account_owner", None)):
-            from athanor.models import AccountOwner
+            from athanor.playviews.models import AccountOwner
 
             AccountOwner.objects.create(id=character, account=self.owner)
         else:
@@ -250,7 +248,7 @@ class AthanorAccount(AthanorHandler, AthanorLowBase, DefaultAccount):
 
     @property
     def playtime(self):
-        from athanor.models import AccountPlaytime
+        from athanor.playviews.models import AccountPlaytime
 
         return AccountPlaytime.objects.get_or_create(id=self)[0]
 

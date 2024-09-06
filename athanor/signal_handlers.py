@@ -54,7 +54,7 @@ def login_fail(sender, **kwargs):
 
 
 def _login_record(user, ip, success=True, reason=None):
-    from .models import Host
+    from athanor.playviews.models import Host
 
     host, created = Host.objects.get_or_create(ip=ip)
     host.records.create(account=user, is_success=success, reason=reason)

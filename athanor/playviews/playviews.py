@@ -1,14 +1,12 @@
-from .models import PlayviewDB
-from .managers import PlayviewManager
+from athanor.playviews.models import PlayviewDB
+from athanor.playviews.managers import PlayviewManager
 
 from django.conf import settings
 from django.utils.translation import gettext as _
 from evennia.typeclasses.models import TypeclassBase
-from evennia.utils.utils import lazy_property, make_iter, logger, to_str
-from evennia.utils.optionhandler import OptionHandler
+from evennia.utils.utils import lazy_property
 from evennia.objects.objects import ObjectSessionHandler
 from evennia.server import signals
-import athanor
 from athanor.typeclasses.mixin import AthanorAccess
 from athanor.utils import utcnow
 
